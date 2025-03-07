@@ -25,6 +25,7 @@ import { ChevronLeft, ChevronRight, Today, Receipt } from '@mui/icons-material';
 import { format, addDays, isSameDay } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useClients } from '../hooks/useClients';
+import { StylistBreak } from '../hooks/useStylists';
 
 // Custom implementations of date-fns functions
 const formatTime = (date: Date): string => {
@@ -508,7 +509,7 @@ export default function StylistDayView({
     slotTime.setHours(hour, minute, 0, 0);
     const slotTimeValue = slotTime.getTime();
     
-    return stylist.breaks.some(breakItem => {
+    return stylist.breaks.some((breakItem: StylistBreak) => {
       const breakStart = new Date(breakItem.startTime).getTime();
       const breakEnd = new Date(breakItem.endTime).getTime();
       
@@ -524,7 +525,7 @@ export default function StylistDayView({
     }
     
     // Filter breaks for the current day
-    return stylist.breaks.filter(breakItem => {
+    return stylist.breaks.filter((breakItem: StylistBreak) => {
       const breakDate = new Date(breakItem.startTime);
       return (
         breakDate.getFullYear() === currentDate.getFullYear() &&
@@ -642,7 +643,7 @@ export default function StylistDayView({
               })}
             
             {/* Stylist Breaks */}
-            {getStylistBreaks(stylist.id).map(breakItem => {
+            {getStylistBreaks(stylist.id).map((breakItem: StylistBreak) => {
               const top = getAppointmentPosition(breakItem.startTime);
               const duration = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
               

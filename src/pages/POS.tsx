@@ -191,13 +191,12 @@ export default function POS() {
     if (!selectedServiceCollection) {
       return filteredServices;
     }
-    return collectionServices
-      .filter(service => 
+    return collectionServices?.filter(service => 
         service.collection_id === selectedServiceCollection && 
         service.active &&
         (service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase()) || 
          (service.description && service.description.toLowerCase().includes(serviceSearchQuery.toLowerCase())))
-      );
+      ) || [];
   };
   
   // Filter services based on search query
@@ -349,34 +348,18 @@ export default function POS() {
   // Update handleAppointmentPayment function to separate services and products
   const handleAppointmentPayment = async () => {
     try {
-      if (!selectedAppointment) {
-        setSnackbarMessage('Please select an appointment');
-        setSnackbarOpen(true);
-        return;
-      }
+      if (!selectedAppointment || !selectedStylist) return;
       
-      setProcessing(true);
-      
-      // Get services from order items
-      const serviceItems = orderItems.filter(item => item.type === 'service').map(item => ({
+      // Create array of services from order items
+      const services = orderItems.map(item => ({
         service_id: item.service.id,
         service_name: item.service.name,
-        price: (item.customPrice || item.service.price) * item.quantity,
-        type: 'service'
+        price: item.customPrice || item.service.price,
+        type: item.type as 'service' | 'product'
       }));
       
-      const productItems = orderItems.filter(item => item.type === 'product').map(item => ({
-        service_id: item.service.id,
-        service_name: item.service.name,
-        price: (item.customPrice || item.service.price) * item.quantity,
-        type: 'product'
-      }));
-      
-      // Combine both for the final services array
-      const services = [...serviceItems, ...productItems];
-      
-      // Calculate prices for each item
-      const servicePrices = orderItems.map(item => (item.customPrice || item.service.price) * item.quantity);
+      // Get only the prices
+      const servicePrices = services.map(service => service.price);
       
       // Calculate totals
       const { subtotal, tax, total } = calculateTotal(servicePrices, appointmentDiscount, appointmentPaymentMethod);
@@ -493,60 +476,30 @@ export default function POS() {
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
     try {
-      // Validate required fields
-      if (!customerName || !selectedStylist || orderItems.length === 0) {
-        setSnackbarMessage('Please fill in all required fields');
-        setSnackbarOpen(true);
-        return;
-      }
-      
-      // Separate services and products
-      const serviceItems = orderItems.filter(item => item.type === 'service').map(item => ({
+      // Create array of services from order items
+      const services = orderItems.map(item => ({
         service_id: item.service.id,
         service_name: item.service.name,
-        price: (item.customPrice || item.service.price) * item.quantity,
-        type: 'service'
+        price: item.customPrice || item.service.price,
+        type: item.type as 'service' | 'product'
       }));
       
-      const productItems = orderItems.filter(item => item.type === 'product').map(item => ({
-        service_id: item.service.id,
-        service_name: item.service.name,
-        price: (item.customPrice || item.service.price) * item.quantity,
-        type: 'product'
-      }));
+      // Get only the prices
+      const servicePrices = services.map(service => service.price);
       
-      // Combine both for the final services array with clear type distinction
-      const services = [...serviceItems, ...productItems];
-      
-      // Use the combined orderSubtotal for total calculation
+      // Calculate totals based on which services and products are being purchased
       const { subtotal, tax, total } = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
       
-      // Create appointment time if scheduled
-      let appointmentDateTime: string | undefined = undefined;
-      if (appointmentDate && appointmentTime) {
-        const dateTime = new Date(appointmentDate);
-        dateTime.setHours(
-          appointmentTime.getHours(),
-          appointmentTime.getMinutes(),
-          0, 0
-        );
-        appointmentDateTime = dateTime.toISOString();
-      }
-      
-      // Set processing state
-      setProcessing(true);
-      
-      // Create order
+      // Process the walk-in order
       await createWalkInOrder({
         client_name: customerName,
-        stylist_id: selectedStylist,
+        stylist_id: selectedStylist ? selectedStylist : '',
         services,
         total,
         subtotal,
         tax,
         discount: walkInDiscount,
         payment_method: walkInPaymentMethod,
-        appointment_time: appointmentDateTime,
         is_walk_in: true
       });
       
@@ -572,8 +525,6 @@ export default function POS() {
       console.error('Order error:', error);
       setSnackbarMessage('Failed to create order');
       setSnackbarOpen(true);
-    } finally {
-      setProcessing(false);
     }
   };
 
@@ -816,7 +767,8 @@ export default function POS() {
                   <FormControl fullWidth variant="outlined">
                     <InputLabel id="product-category-label">Product Category</InputLabel>
                     <Select
-                      labelId="product-category-label"
+                      fullWidth
+                      variant="outlined"
                       value={selectedProductCategory}
                       onChange={(e) => setSelectedProductCategory(e.target.value)}
                       label="Product Category"
@@ -824,11 +776,14 @@ export default function POS() {
                       <MenuItem value="">
                         <em>All Categories</em>
                       </MenuItem>
-                      {getProductCategories().map((category) => (
-                        <MenuItem key={category} value={category}>
-                          {category}
-                        </MenuItem>
-                      ))}
+                      {getProductCategories().map((category) => {
+                        const categoryStr = String(category);
+                        return (
+                          <MenuItem key={categoryStr} value={categoryStr}>
+                            {categoryStr}
+                          </MenuItem>
+                        );
+                      })}
                     </Select>
                   </FormControl>
                 </Grid>

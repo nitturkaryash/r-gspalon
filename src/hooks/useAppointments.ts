@@ -1,11 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
+import { StylistBreak } from './useStylists'
 
 // Mock data types
 interface Client {
   id: string;
   full_name: string;
+  phone?: string;
 }
 
 interface Service {
@@ -18,6 +20,7 @@ interface Service {
 interface Stylist {
   id: string;
   name: string;
+  breaks?: StylistBreak[]; // Add breaks property to local Stylist interface
 }
 
 export interface Appointment {
@@ -152,6 +155,9 @@ interface CreateAppointmentData {
   end_time: string;
   status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
+  client_id?: string; // Optional client_id
+  phone?: string;     // Optional phone
+  email?: string;     // Optional email
 }
 
 // Add a function to check if an appointment conflicts with a stylist's break
@@ -171,7 +177,7 @@ const checkBreakConflict = (
   const appointmentEnd = new Date(endTime).getTime();
 
   // Check if any break overlaps with the appointment time
-  return stylist.breaks.some(breakItem => {
+  return stylist.breaks.some((breakItem: StylistBreak) => {
     const breakStart = new Date(breakItem.startTime).getTime();
     const breakEnd = new Date(breakItem.endTime).getTime();
 
@@ -214,7 +220,7 @@ export function useAppointments() {
       if (data.client_id) {
         client_id = data.client_id;
       } else {
-        const client = persistedClients.find(c => c.full_name.toLowerCase() === data.client_name.toLowerCase());
+        const client = persistedClients.find((c: Client) => c.full_name.toLowerCase() === data.client_name.toLowerCase());
         if (client) {
           client_id = client.id;
         } else {
