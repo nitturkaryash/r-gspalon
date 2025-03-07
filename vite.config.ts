@@ -31,9 +31,52 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    // Increase the warning limit to reduce noise
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html')
+      },
+      output: {
+        // Configure manual chunks to split the bundle
+        manualChunks: (id) => {
+          // Create a vendors chunk for node_modules
+          if (id.includes('node_modules')) {
+            // Split major libraries into their own chunks
+            if (id.includes('@mui')) {
+              return 'vendor-mui';
+            }
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@fullcalendar')) {
+              return 'vendor-calendar';
+            }
+            if (id.includes('chart.js') || id.includes('recharts')) {
+              return 'vendor-charts';
+            }
+            // All other dependencies
+            return 'vendor';
+          }
+          
+          // Split application code by feature
+          if (id.includes('/src/components/')) {
+            return 'components';
+          }
+          if (id.includes('/src/hooks/')) {
+            return 'hooks';
+          }
+          if (id.includes('/src/pages/')) {
+            // Split large pages into separate chunks
+            if (id.includes('/pages/POS.tsx')) {
+              return 'page-pos';
+            }
+            if (id.includes('/pages/Appointments.tsx')) {
+              return 'page-appointments';
+            }
+            return 'pages';
+          }
+        }
       }
     }
   }
