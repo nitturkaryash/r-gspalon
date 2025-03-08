@@ -5,7 +5,12 @@ import { resolve } from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      jsxImportSource: '@emotion/react',
+      babel: {
+        plugins: ['@emotion/babel-plugin']
+      }
+    }),
   ],
   server: {
     hmr: {
@@ -31,10 +36,85 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    // Increase the warning limit to reduce noise
+    chunkSizeWarningLimit: 800,
+    // Add minify options to better handle initialization order
+    minify: 'esbuild',
+    // Add esbuild options
+    target: 'es2020',
+    cssTarget: 'chrome80',
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html')
+      },
+      output: {
+        // Configure manual chunks to split the bundle
+        manualChunks: (id) => {
+          // Create a vendors chunk for node_modules
+          if (id.includes('node_modules')) {
+            // Split major libraries into their own chunks
+            if (id.includes('@mui')) {
+              return 'vendor-mui';
+            }
+            if (id.includes('@emotion')) {
+              return 'vendor-emotion';
+            }
+            if (id.includes('framer-motion')) {
+              return 'vendor-framer-motion';
+            }
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@fullcalendar')) {
+              return 'vendor-calendar';
+            }
+            if (id.includes('chart.js') || id.includes('recharts')) {
+              return 'vendor-charts';
+            }
+            // All other dependencies
+            return 'vendor';
+          }
+          
+          // Split application code by feature
+          if (id.includes('/src/components/')) {
+            return 'components';
+          }
+          if (id.includes('/src/hooks/')) {
+            return 'hooks';
+          }
+          if (id.includes('/src/pages/')) {
+            // Split large pages into separate chunks
+            if (id.includes('/pages/POS.tsx')) {
+              return 'page-pos';
+            }
+            if (id.includes('/pages/Appointments.tsx')) {
+              return 'page-appointments';
+            }
+            return 'pages';
+          }
+        }
       }
+    }
+  },
+  optimizeDeps: {
+    // Include more dependencies for pre-bundling to prevent issues
+    include: [
+      '@emotion/react', 
+      '@emotion/styled', 
+      '@mui/material/Tooltip',
+      '@mui/material',
+      '@mui/icons-material',
+      'react-router-dom',
+      'react-toastify',
+      'framer-motion'
+    ],
+    // Force nested dependencies to be pre-bundled
+    force: true
+  },
+  // Add resolve aliases for cleaner imports
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src')
     }
   }
 })

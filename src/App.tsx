@@ -1,6 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import { DevRefresher } from './components/DevRefresher'
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import { theme } from './theme'; // Your theme configuration
 
 // Page imports
 import Dashboard from './pages/Dashboard'
@@ -16,7 +19,8 @@ import ServiceCollectionDetail from './pages/ServiceCollectionDetail'
 
 function App() {
   return (
-    <>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
       <Layout>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -35,7 +39,7 @@ function App() {
       
       {/* Only renders in development */}
       <DevRefresher />
-    </>
+    </ThemeProvider>
   )
 }
 
