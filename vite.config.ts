@@ -5,7 +5,12 @@ import { resolve } from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      jsxImportSource: '@emotion/react',
+      babel: {
+        plugins: ['@emotion/babel-plugin']
+      }
+    }),
   ],
   server: {
     hmr: {
@@ -33,6 +38,11 @@ export default defineConfig({
     sourcemap: true,
     // Increase the warning limit to reduce noise
     chunkSizeWarningLimit: 800,
+    // Add minify options to better handle initialization order
+    minify: 'esbuild',
+    // Add esbuild options
+    target: 'es2020',
+    cssTarget: 'chrome80',
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html')
@@ -45,6 +55,12 @@ export default defineConfig({
             // Split major libraries into their own chunks
             if (id.includes('@mui')) {
               return 'vendor-mui';
+            }
+            if (id.includes('@emotion')) {
+              return 'vendor-emotion';
+            }
+            if (id.includes('framer-motion')) {
+              return 'vendor-framer-motion';
             }
             if (id.includes('react') || id.includes('react-dom')) {
               return 'vendor-react';
@@ -78,6 +94,27 @@ export default defineConfig({
           }
         }
       }
+    }
+  },
+  optimizeDeps: {
+    // Include more dependencies for pre-bundling to prevent issues
+    include: [
+      '@emotion/react', 
+      '@emotion/styled', 
+      '@mui/material/Tooltip',
+      '@mui/material',
+      '@mui/icons-material',
+      'react-router-dom',
+      'react-toastify',
+      'framer-motion'
+    ],
+    // Force nested dependencies to be pre-bundled
+    force: true
+  },
+  // Add resolve aliases for cleaner imports
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src')
     }
   }
 })

@@ -28,7 +28,6 @@ import {
   CardActions,
   IconButton,
   Chip,
-  Stack,
   TableContainer,
   Table,
   TableHead,
@@ -42,17 +41,14 @@ import {
   StepLabel,
   Alert,
   Snackbar,
-  Tooltip,
 } from '@mui/material'
 import { 
   Add as AddIcon, 
   Remove as RemoveIcon, 
   ShoppingCart as CartIcon,
   Person as PersonIcon,
-  Schedule as ScheduleIcon,
   Payment as PaymentIcon,
   Check as CheckIcon,
-  AddCircle as AddCircleIcon,
   DeleteOutline as DeleteOutlineIcon,
   CreditCard as CreditCardIcon,
   LocalAtm as LocalAtmIcon,
@@ -74,8 +70,7 @@ import { useServiceCollections } from '../hooks/useServiceCollections'
 import { useCollectionServices } from '../hooks/useCollectionServices'
 import { useCollections } from '../hooks/useCollections'
 import { formatCurrency } from '../utils/format'
-import { playCashRegisterSound, addCashRegisterTestButton } from '../assets/sounds/cash-register'
-import { toast } from 'react-toastify'
+import { playCashRegisterSound } from '../assets/sounds/cash-register'
 
 // Tab interface for switching between appointment payments and walk-in sales
 interface TabPanelProps {
@@ -179,9 +174,9 @@ export default function POS() {
   
   // Selected collection state
   const [selectedServiceCollection, setSelectedServiceCollection] = useState<string>('');
-  const [expandedServiceCollection, setExpandedServiceCollection] = useState<boolean>(false);
+  const [_expandedServiceCollection, _setExpandedServiceCollection] = useState<boolean>(false);
   const [selectedProductCategory, setSelectedProductCategory] = useState<string>('');
-  const [expandedProductCategory, setExpandedProductCategory] = useState<boolean>(false);
+  const [_expandedProductCategory, _setExpandedProductCategory] = useState<boolean>(false);
   
   // Filter active services for the order creation
   const activeServices = allServices?.filter(service => service.active) || [];
