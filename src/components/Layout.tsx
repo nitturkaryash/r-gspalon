@@ -29,7 +29,8 @@ import {
   Storefront,
   Category,
 } from '@mui/icons-material'
-import { motion } from 'framer-motion'
+import * as React from 'react'
+import * as FramerMotion from 'framer-motion'
 import { styled } from '@mui/material/styles'
 import { alpha } from '@mui/material/styles'
 
@@ -64,7 +65,7 @@ const ListItemStyled = styled(ListItem)(({ theme }) => ({
   },
 }))
 
-const MenuIconStyled = styled(motion.div)({
+const MenuIconStyled = styled(FramerMotion.motion.div)({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -113,7 +114,7 @@ export default function Layout({ children }: LayoutProps) {
         gap: 1
       }}>
         {menuLinks.map((link) => (
-          <motion.div
+          <FramerMotion.motion.div
             key={link.text}
             whileHover="hover"
             variants={menuItemVariants}
@@ -166,7 +167,7 @@ export default function Layout({ children }: LayoutProps) {
                 />
               </ListItemButton>
             </ListItemStyled>
-          </motion.div>
+          </FramerMotion.motion.div>
         ))}
       </List>
     </>

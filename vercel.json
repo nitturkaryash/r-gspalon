@@ -5,6 +5,32 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist"
+  "buildCommand": "./vercel-build.sh",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "installCommand": "true",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "VITE_CJS_IGNORE_WARNING": "true",
+    "NODE_OPTIONS": "--max-old-space-size=4096 --no-warnings"
+  }
 } 

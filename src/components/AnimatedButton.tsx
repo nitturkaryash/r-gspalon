@@ -1,9 +1,10 @@
 import { Button, ButtonProps } from '@mui/material';
-import { motion } from 'framer-motion';
+import * as React from 'react';
+import * as FramerMotion from 'framer-motion';
 import { styled } from '@mui/material/styles';
 
 // Create a motion component with the Button component
-const MotionButton = styled(motion.button)(({ theme }) => ({
+const MotionButton = styled(FramerMotion.motion.button)(({ theme }) => ({
   position: 'relative',
   overflow: 'hidden',
   border: 'none',
