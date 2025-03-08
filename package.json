@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "vercel-build": "npm install --force && tsc && VITE_CJS_IGNORE_WARNING=true vite build",
+    "vercel-build": "npm install --force && VITE_CJS_IGNORE_WARNING=true NODE_OPTIONS='--max-old-space-size=4096 --no-warnings' tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },

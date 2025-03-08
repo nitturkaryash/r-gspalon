@@ -5,10 +5,10 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "./vercel-build.sh",
+  "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "installCommand": "true",
+  "installCommand": "npm install",
   "headers": [
     {
       "source": "/(.*)",
