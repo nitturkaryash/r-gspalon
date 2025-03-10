@@ -493,10 +493,19 @@ export default function StylistDayView({
   
   // Add a helper function to ensure dates are consistently handled
   const normalizeDateTime = (dateTimeString: string) => {
+    // Parse the input date string
     const dateTime = new Date(dateTimeString);
     
+    // Log the original date for debugging
+    console.log('Normalizing date:', {
+      original: dateTimeString,
+      parsed: dateTime.toLocaleString(),
+      hours: dateTime.getHours(),
+      minutes: dateTime.getMinutes()
+    });
+    
     // Explicitly preserve the time components while normalizing to the current date
-    return new Date(
+    const normalized = new Date(
       currentDate.getFullYear(),
       currentDate.getMonth(),
       currentDate.getDate(),
@@ -505,6 +514,15 @@ export default function StylistDayView({
       0,
       0
     );
+    
+    // Log the normalized date for debugging
+    console.log('Normalized date:', {
+      result: normalized.toLocaleString(),
+      hours: normalized.getHours(),
+      minutes: normalized.getMinutes()
+    });
+    
+    return normalized;
   };
 
   // Update the getAppointmentPosition function to correctly calculate positions for 15-minute intervals
@@ -524,8 +542,11 @@ export default function StylistDayView({
     const hoursSinceStart = time.getHours() - BUSINESS_HOURS.start;
     const minutesSinceHourStart = time.getMinutes();
     
+    // Calculate total minutes since the start of business hours
+    const totalMinutesSinceStart = (hoursSinceStart * 60) + minutesSinceHourStart;
+    
     // Calculate total 15-minute intervals since the start of business hours
-    const totalIntervals = (hoursSinceStart * 4) + (minutesSinceHourStart / 15);
+    const totalIntervals = Math.floor(totalMinutesSinceStart / 15);
     
     // Calculate position in pixels (each interval is TIME_SLOT_HEIGHT pixels)
     const position = totalIntervals * TIME_SLOT_HEIGHT;
@@ -535,6 +556,7 @@ export default function StylistDayView({
       businessStart: BUSINESS_HOURS.start,
       hourDiff: hoursSinceStart,
       minute: minutesSinceHourStart,
+      totalMinutesSinceStart,
       totalIntervals,
       position
     });
@@ -551,11 +573,21 @@ export default function StylistDayView({
     // Calculate duration in minutes
     const durationInMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     
-    // Calculate number of 15-minute intervals
-    const intervals = durationInMinutes / 15;
+    // Calculate number of 15-minute intervals (round up to ensure coverage)
+    const intervals = Math.ceil(durationInMinutes / 15);
     
     // Convert to pixels based on TIME_SLOT_HEIGHT
-    return intervals * TIME_SLOT_HEIGHT;
+    const height = intervals * TIME_SLOT_HEIGHT;
+    
+    console.log('Duration calculation:', {
+      startTime: start.toLocaleTimeString(),
+      endTime: end.toLocaleTimeString(),
+      durationInMinutes,
+      intervals,
+      height
+    });
+    
+    return height;
   };
 
   const navigate = useNavigate();
