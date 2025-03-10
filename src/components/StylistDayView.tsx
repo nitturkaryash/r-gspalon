@@ -1126,30 +1126,6 @@ export default function StylistDayView({
                 </Grid>
               </Grid>
               
-              {/* Selected Service Display */}
-              {editFormData.serviceId && (
-                <Box 
-                  sx={{ 
-                    mb: 2, 
-                    p: 2, 
-                    border: '1px solid', 
-                    borderColor: 'success.main', 
-                    borderRadius: 1,
-                    bgcolor: 'success.light',
-                    color: 'success.contrastText'
-                  }}
-                >
-                  <Typography variant="subtitle1" fontWeight="bold">
-                    Selected Service:
-                  </Typography>
-                  <Typography>
-                    {services?.find(s => s.id === editFormData.serviceId)?.name} - {' '}
-                    {services?.find(s => s.id === editFormData.serviceId)?.duration} min - {' '}
-                    {formatCurrency(services?.find(s => s.id === editFormData.serviceId)?.price || 0)}
-                  </Typography>
-                </Box>
-              )}
-              
               {/* Service Cards */}
               <Box sx={{ maxHeight: '300px', overflow: 'auto', mb: 2 }}>
                 <Grid container spacing={1}>
@@ -1157,24 +1133,26 @@ export default function StylistDayView({
                     getFilteredServices().map((service) => (
                       <Grid item xs={12} sm={6} key={service.id}>
                         <Paper 
-                          elevation={editFormData.serviceId === service.id ? 3 : 1}
+                          elevation={editFormData.serviceId === service.id ? 4 : 1}
                           sx={{ 
                             p: 1.5, 
                             cursor: 'pointer',
                             transition: 'all 0.2s',
                             border: editFormData.serviceId === service.id ? '2px solid' : '1px solid',
                             borderColor: editFormData.serviceId === service.id ? 'primary.main' : 'divider',
-                            bgcolor: editFormData.serviceId === service.id ? 'rgba(25, 118, 210, 0.08)' : 'background.paper',
+                            bgcolor: editFormData.serviceId === service.id ? 'rgba(25, 118, 210, 0.12)' : 'background.paper',
+                            transform: editFormData.serviceId === service.id ? 'translateY(-3px)' : 'none',
+                            boxShadow: editFormData.serviceId === service.id ? 3 : 1,
                             '&:hover': {
-                              bgcolor: 'action.hover',
+                              bgcolor: editFormData.serviceId === service.id ? 'rgba(25, 118, 210, 0.12)' : 'action.hover',
                               transform: 'translateY(-2px)',
                               boxShadow: 2
                             }
                           }}
                           onClick={() => setEditFormData({ ...editFormData, serviceId: service.id })}
                         >
-                          <Typography variant="subtitle1" fontWeight="medium">
-                            {service.name}
+                          <Typography variant="subtitle1" fontWeight={editFormData.serviceId === service.id ? "bold" : "medium"} color={editFormData.serviceId === service.id ? "primary.main" : "text.primary"}>
+                            {editFormData.serviceId === service.id && "✓ "}{service.name}
                           </Typography>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                             <Typography variant="body2" color="text.secondary">
