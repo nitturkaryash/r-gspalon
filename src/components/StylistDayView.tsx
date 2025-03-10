@@ -42,7 +42,8 @@ const BUSINESS_HOURS = {
   end: 22,   // 10 PM
 };
 
-const TIME_SLOT_HEIGHT = 60; // Height in pixels for a 30-minute slot
+// Update the TIME_SLOT_HEIGHT constant to account for 15-minute intervals
+const TIME_SLOT_HEIGHT = 120; // Height in pixels for an hour (4 * 15-minute slots = 30px each)
 
 // Styled components
 const DayViewContainer = styled(Paper)(({ theme }) => ({
@@ -104,27 +105,112 @@ const StylistHeader = styled(Box)(({ theme }) => ({
   borderRadius: '16px 16px 0 0', // Rounded top corners
 }));
 
+// First, fix the TimeSlot component to ensure consistent styling
 const TimeSlot = styled(Box, {
-  shouldForwardProp: (prop) => prop !== 'isHalfHour',
-})<{ isHalfHour: boolean }>(({ theme, isHalfHour }) => ({
-  height: TIME_SLOT_HEIGHT / 2,
-  borderBottom: `1px solid ${isHalfHour ? theme.palette.divider : theme.palette.grey[200]}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'flex-end',
-  paddingRight: theme.spacing(1),
-  color: theme.palette.text.secondary,
-  fontSize: '0.75rem',
-  backgroundColor: isHalfHour ? 'transparent' : theme.palette.salon.cream, // Cream background for full hours
+  shouldForwardProp: (prop) => prop !== 'isQuarterHour' && prop !== 'isHalfHour' && prop !== 'isThreeQuarterHour',
+})<{ isQuarterHour: boolean; isHalfHour: boolean; isThreeQuarterHour: boolean }>(
+  ({ theme, isQuarterHour, isHalfHour, isThreeQuarterHour }) => ({
+    height: TIME_SLOT_HEIGHT / 4, // 15-minute height
+    borderBottom: `1px solid ${
+      isHalfHour 
+        ? theme.palette.divider 
+        : isQuarterHour || isThreeQuarterHour
+          ? theme.palette.grey[200]
+          : theme.palette.grey[300]
+    }`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingRight: theme.spacing(1),
+    color: theme.palette.text.secondary,
+    fontSize: '0.75rem',
+    backgroundColor: isQuarterHour || isHalfHour || isThreeQuarterHour 
+      ? 'transparent' 
+      : theme.palette.salon.cream,
+    // Ensure consistent styling
+    '&:first-of-type': {
+      borderTop: `1px solid ${theme.palette.grey[300]}`,
+    },
 }));
 
+// Fix the isBreakTime function to correctly check for overlaps with 15-minute precision
+const isBreakTime = (stylistId: string, hour: number, minute: number) => {
+  const stylist = stylists.find(s => s.id === stylistId);
+  if (!stylist || !stylist.breaks || stylist.breaks.length === 0) {
+    return false;
+  }
+  
+  try {
+    // Create a date object for the slot time
+    const slotTime = new Date(currentDate);
+    slotTime.setHours(hour, minute, 0, 0);
+    const slotTimeValue = slotTime.getTime();
+    
+    // Create a date object for the end of the slot (now 15 minutes)
+    const slotEndTime = new Date(currentDate);
+    slotEndTime.setHours(hour, minute + 15, 0, 0); // Add 15 minutes for the end of the slot
+    const slotEndTimeValue = slotEndTime.getTime();
+    
+    // Get only breaks for the current day to improve performance
+    const todayBreaks = stylist.breaks.filter((breakItem: StylistBreak) => {
+      const breakDate = new Date(breakItem.startTime);
+      return isSameDay(breakDate, currentDate);
+    });
+    
+    // Check if the slot time overlaps with any break period
+    return todayBreaks.some((breakItem: StylistBreak) => {
+      try {
+        const breakStart = new Date(breakItem.startTime).getTime();
+        const breakEnd = new Date(breakItem.endTime).getTime();
+        
+        // Debug log to help identify issues
+        if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
+          console.log('Break time check:', {
+            slotTime: slotTime.toISOString(),
+            slotEndTime: slotEndTime.toISOString(),
+            breakStart: new Date(breakItem.startTime).toISOString(),
+            breakEnd: new Date(breakItem.endTime).toISOString(),
+            isOverlapping: (
+              // Check if the slot starts during a break
+              (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
+              // Check if the slot ends during a break
+              (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
+              // Check if the slot completely contains a break
+              (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
+            )
+          });
+        }
+        
+        // Check for any overlap between the slot and the break
+        return (
+          // Check if the slot starts during a break
+          (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
+          // Check if the slot ends during a break
+          (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
+          // Check if the slot completely contains a break
+          (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
+        );
+      } catch (error) {
+        console.error('Error checking break time:', error, breakItem);
+        return false;
+      }
+    });
+  } catch (error) {
+    console.error('Error in isBreakTime:', error);
+    return false;
+  }
+};
+
+// Fix the AppointmentSlot component to ensure no invisible blocking elements
 const AppointmentSlot = styled(Box)(({ theme }) => ({
-  height: TIME_SLOT_HEIGHT / 2,
+  height: TIME_SLOT_HEIGHT / 4, // 15-minute height
   borderBottom: `1px solid ${theme.palette.divider}`,
   cursor: 'pointer',
   transition: 'background-color 0.2s',
+  position: 'relative', // Ensure proper stacking
+  zIndex: 1, // Base z-index
   '&:hover': {
-    backgroundColor: `${theme.palette.primary.light}20`, // Light olive with transparency
+    backgroundColor: `${theme.palette.primary.light}20`,
   },
 }));
 
@@ -153,61 +239,71 @@ const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) 
   },
 }));
 
+// Update the BreakCard component to ensure it doesn't capture mouse events
 const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
-  left: 0, // Cover the entire width
+  left: 0,
   right: 0,
-  height: (duration / 30) * (TIME_SLOT_HEIGHT / 2), // Convert duration to height
-  backgroundColor: 'rgba(211, 47, 47, 0.85)', // More opaque red for better visibility
-  color: theme.palette.error.contrastText, 
-  borderRadius: 0, // Remove border radius to ensure full coverage
+  height: (duration / 15) * (TIME_SLOT_HEIGHT / 4), // Adjust for 15-minute slots
+  backgroundColor: '#d32f2f', // Solid red color
+  color: '#ffffff',
+  borderRadius: 0,
   padding: theme.spacing(0.75, 1),
   overflow: 'hidden',
-  boxShadow: '0px 4px 12px rgba(211, 47, 47, 0.4)', // Stronger shadow
-  zIndex: 10, // Higher z-index to ensure it's above other elements
+  boxShadow: 'none', // Remove the shadow completely
+  zIndex: 20, // Very high z-index to ensure it's above everything
   fontSize: '0.75rem',
   display: 'flex',
   flexDirection: 'column',
-  justifyContent: 'center', // Center content vertically
-  transition: 'all 0.2s ease-in-out',
-  border: '2px solid rgba(211, 47, 47, 0.9)', // More visible border
-  cursor: 'not-allowed', // Indicate that this area is not available
-  pointerEvents: 'auto', // Ensure it captures mouse events
+  justifyContent: 'center',
+  transition: 'none', // Remove transitions
+  border: 'none', // Remove border
+  cursor: 'not-allowed',
+  pointerEvents: 'none', // Prevent it from capturing mouse events
   '&:hover': {
-    boxShadow: '0px 6px 16px rgba(211, 47, 47, 0.6)',
+    boxShadow: 'none', // No hover effect
   },
 }));
 
-// Generate time slots for the day
+// Update the generateTimeSlots function to create 15-minute intervals
 const generateTimeSlots = () => {
   const slots = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
-    // Add hour slot
+    // Add slots for 0, 15, 30, and 45 minutes
     slots.push({ hour, minute: 0 });
-    // Add half-hour slot
     if (hour < BUSINESS_HOURS.end) {
+      slots.push({ hour, minute: 15 });
       slots.push({ hour, minute: 30 });
+      slots.push({ hour, minute: 45 });
     }
   }
   return slots;
 };
 
-// Generate time options for select dropdown
+// Update the generateTimeOptions function to include 15-minute intervals
 const generateTimeOptions = () => {
   const options = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
-    // Convert to 12-hour format with AM/PM
     const period = hour >= 12 ? 'PM' : 'AM';
     const hour12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
     
+    // Add options for 0, 15, 30, and 45 minutes
     options.push({ 
       value: `${hour}:00`, 
       label: `${hour12}:00 ${period}` 
     });
     if (hour < BUSINESS_HOURS.end) {
       options.push({ 
+        value: `${hour}:15`, 
+        label: `${hour12}:15 ${period}` 
+      });
+      options.push({ 
         value: `${hour}:30`, 
         label: `${hour12}:30 ${period}` 
+      });
+      options.push({ 
+        value: `${hour}:45`, 
+        label: `${hour12}:45 ${period}` 
       });
     }
   }
@@ -452,20 +548,21 @@ export default function StylistDayView({
     return isSameDay(appointmentDate, currentDate);
   });
   
-  // Calculate position for an appointment
+  // Update the getAppointmentPosition function to be more precise with 15-minute intervals
   const getAppointmentPosition = (startTime: string) => {
     const time = new Date(startTime);
     const hour = time.getHours();
     const minute = time.getMinutes();
     
-    // Calculate slots from the start of business hours
+    // Calculate slots from the start of business hours with 15-minute precision
     const hourOffset = hour - BUSINESS_HOURS.start;
-    const minuteOffset = minute / 30; // Convert minutes to 30-minute slots
+    const minuteOffset = minute / 15; // Convert minutes to 15-minute slots
     
-    return (hourOffset * 2 + minuteOffset) * (TIME_SLOT_HEIGHT / 2);
+    // Calculate the exact position based on hours and minutes
+    return (hourOffset * 4 + minuteOffset) * (TIME_SLOT_HEIGHT / 4);
   };
   
-  // Calculate duration in 30-minute slots
+  // Update the duration calculations for break cards and appointments
   const getAppointmentDuration = (startTime: string, endTime: string) => {
     const start = new Date(startTime);
     const end = new Date(endTime);
@@ -497,74 +594,6 @@ export default function StylistDayView({
         }
       }
     });
-  };
-
-  // Check if a time slot conflicts with any stylist break
-  const isBreakTime = (stylistId: string, hour: number, minute: number) => {
-    const stylist = stylists.find(s => s.id === stylistId);
-    if (!stylist || !stylist.breaks || stylist.breaks.length === 0) {
-      return false;
-    }
-    
-    try {
-      // Create a date object for the slot time
-      const slotTime = new Date(currentDate);
-      slotTime.setHours(hour, minute, 0, 0);
-      const slotTimeValue = slotTime.getTime();
-      
-      // Create a date object for the end of the slot
-      const slotEndTime = new Date(currentDate);
-      slotEndTime.setHours(hour, minute + 30, 0, 0); // Add 30 minutes for the end of the slot
-      const slotEndTimeValue = slotEndTime.getTime();
-      
-      // Get only breaks for the current day to improve performance
-      const todayBreaks = stylist.breaks.filter((breakItem: StylistBreak) => {
-        const breakDate = new Date(breakItem.startTime);
-        return isSameDay(breakDate, currentDate);
-      });
-      
-      // Check if the slot time overlaps with any break period
-      return todayBreaks.some((breakItem: StylistBreak) => {
-        try {
-          const breakStart = new Date(breakItem.startTime).getTime();
-          const breakEnd = new Date(breakItem.endTime).getTime();
-          
-          // Debug log to help identify issues
-          if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
-            console.log('Break time check:', {
-              slotTime: slotTime.toISOString(),
-              slotEndTime: slotEndTime.toISOString(),
-              breakStart: new Date(breakItem.startTime).toISOString(),
-              breakEnd: new Date(breakItem.endTime).toISOString(),
-              isOverlapping: (
-                // Check if the slot starts during a break
-                (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-                // Check if the slot ends during a break
-                (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-                // Check if the slot completely contains a break
-                (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
-              )
-            });
-          }
-          
-          // Check for any overlap between the slot and the break
-          return (
-            // Check if the slot starts during a break
-            (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-            // Check if the slot ends during a break
-            (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-            // Check if the slot completely contains a break
-            (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
-          );
-        } catch (error) {
-          console.error('Error checking break time:', error, breakItem);
-          return false;
-        }
-      });
-    } catch (error) {
-      console.error('Error in isBreakTime:', error);
-      return false;
-    }
   };
 
   // Get stylist breaks for the current day
@@ -639,7 +668,9 @@ export default function StylistDayView({
           {timeSlots.map((slot, index) => (
             <TimeSlot 
               key={`time-${slot.hour}-${slot.minute}`}
+              isQuarterHour={slot.minute === 15}
               isHalfHour={slot.minute === 30}
+              isThreeQuarterHour={slot.minute === 45}
             >
               {slot.minute === 0 && formatHour(slot.hour)}
             </TimeSlot>
@@ -661,10 +692,11 @@ export default function StylistDayView({
                 onDragOver={(e) => handleDragOver(e, stylist.id, slot.hour, slot.minute)}
                 onDrop={(e) => handleDrop(e, stylist.id, slot.hour, slot.minute)}
                 sx={isBreakTime(stylist.id, slot.hour, slot.minute) ? { 
-                  backgroundColor: 'rgba(211, 47, 47, 0.15)', 
+                  backgroundColor: 'rgba(211, 47, 47, 0.1)', // Very light red background
                   cursor: 'not-allowed',
+                  pointerEvents: 'none', // Prevent mouse events
                   '&:hover': {
-                    backgroundColor: 'rgba(211, 47, 47, 0.2)'
+                    backgroundColor: 'rgba(211, 47, 47, 0.1)' // No hover effect
                   }
                 } : undefined}
               />
@@ -708,21 +740,34 @@ export default function StylistDayView({
             
             {/* Stylist Breaks */}
             {getStylistBreaks(stylist.id).map((breakItem: StylistBreak) => {
+              // Parse the break times precisely
+              const breakStart = new Date(breakItem.startTime);
+              const breakEnd = new Date(breakItem.endTime);
+              
+              // Calculate the exact position based on the break start time with 15-minute precision
               const top = getAppointmentPosition(breakItem.startTime);
               const duration = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
               
-              // Ensure the break covers at least one full slot
-              const adjustedDuration = Math.max(duration, 30);
+              // Calculate the height precisely based on 15-minute intervals
+              const heightInPixels = (duration / 15) * (TIME_SLOT_HEIGHT / 4);
+              
+              console.log('Break rendering:', {
+                breakId: breakItem.id,
+                startTime: breakStart.toLocaleTimeString(),
+                endTime: breakEnd.toLocaleTimeString(),
+                duration,
+                top,
+                heightInPixels
+              });
               
               return (
                 <BreakCard
                   key={`break-${breakItem.id}`}
-                  duration={adjustedDuration}
+                  duration={duration}
                   style={{ 
-                    top,
-                    // Add a small negative margin to ensure it fully covers the slots
-                    marginTop: -1,
-                    height: (adjustedDuration / 30) * (TIME_SLOT_HEIGHT / 2) + 2 // Add 2px to cover borders
+                    top: top,
+                    height: heightInPixels,
+                    zIndex: 30 // Ensure it's above everything
                   }}
                 >
                   <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
@@ -734,8 +779,7 @@ export default function StylistDayView({
                     </Typography>
                   )}
                   <Typography variant="caption" sx={{ color: 'white' }}>
-                    {formatTime(new Date(breakItem.startTime))} - 
-                    {formatTime(new Date(breakItem.endTime))}
+                    {formatTime(breakStart)} - {formatTime(breakEnd)}
                   </Typography>
                 </BreakCard>
               );
