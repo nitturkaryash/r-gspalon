@@ -526,7 +526,7 @@ export default function StylistDayView({
     return normalized;
   };
 
-  // Update the getAppointmentPosition function to correctly calculate positions for 15-minute intervals
+  // Update the getAppointmentPosition function to correctly calculate positions
   const getAppointmentPosition = (startTime: string) => {
     // Use the normalized date to ensure consistent time interpretation
     const time = normalizeDateTime(startTime);
@@ -547,7 +547,8 @@ export default function StylistDayView({
     const totalMinutesSinceStart = (hoursSinceStart * 60) + minutesSinceHourStart;
     
     // Calculate total 15-minute intervals since the start of business hours
-    const totalIntervals = Math.floor(totalMinutesSinceStart / 15);
+    // Ensure we're using exact intervals without any rounding issues
+    const totalIntervals = Math.round(totalMinutesSinceStart / 15);
     
     // Calculate position in pixels (each interval is TIME_SLOT_HEIGHT pixels)
     const position = totalIntervals * TIME_SLOT_HEIGHT;
@@ -916,6 +917,10 @@ export default function StylistDayView({
                 const top = getAppointmentPosition(appointment.start_time);
                 const duration = getAppointmentDuration(appointment.start_time, appointment.end_time);
                 
+                // Create normalized dates for display to ensure correct time formatting
+                const startTimeDate = normalizeDateTime(appointment.start_time);
+                const endTimeDate = normalizeDateTime(appointment.end_time);
+                
                 return (
                   <AppointmentCard
                     key={appointment.id}
@@ -937,8 +942,7 @@ export default function StylistDayView({
                       {service?.name || 'Unknown Service'}
                     </Typography>
                     <Typography variant="caption">
-                      {formatTime(new Date(appointment.start_time))} - 
-                      {formatTime(new Date(appointment.end_time))}
+                      {format(startTimeDate, 'h:mm a')} - {format(endTimeDate, 'h:mm a')}
                     </Typography>
                   </AppointmentCard>
                 );
