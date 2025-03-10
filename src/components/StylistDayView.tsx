@@ -43,8 +43,8 @@ const BUSINESS_HOURS = {
   end: 22,   // 10 PM
 };
 
-// Update the time slot height to be exactly 60px per hour
-const TIME_SLOT_HEIGHT = 60; // Height in pixels for one hour
+// Update the time slot height to match 15-minute intervals
+const TIME_SLOT_HEIGHT = 15; // Height in pixels for one 15-minute slot
 
 // Styled components
 const DayViewContainer = styled(Paper)(({ theme }) => ({
@@ -112,7 +112,7 @@ const TimeSlot = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
   display: 'flex',
   alignItems: 'center',
-  padding: theme.spacing(1),
+  padding: theme.spacing(0.5),
   backgroundColor: theme.palette.background.paper,
   position: 'relative',
   '&:last-child': {
@@ -133,10 +133,15 @@ const AppointmentSlot = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
   cursor: 'pointer',
   transition: 'background-color 0.2s',
-  position: 'relative', // Ensure proper stacking
-  zIndex: 1, // Base z-index
   '&:hover': {
-    backgroundColor: `${theme.palette.primary.light}20`,
+    backgroundColor: theme.palette.action.hover,
+  },
+  '&.blocked': {
+    backgroundColor: 'rgba(211, 47, 47, 0.15)',
+    cursor: 'not-allowed',
+    '&:hover': {
+      backgroundColor: 'rgba(211, 47, 47, 0.2)',
+    },
   },
 }));
 
@@ -502,7 +507,7 @@ export default function StylistDayView({
     );
   };
 
-  // Update the getAppointmentPosition function to be more precise
+  // Update the getAppointmentPosition function to correctly calculate positions for 15-minute intervals
   const getAppointmentPosition = (startTime: string) => {
     // Use the normalized date to ensure consistent time interpretation
     const time = normalizeDateTime(startTime);
@@ -515,25 +520,29 @@ export default function StylistDayView({
       minutes: time.getMinutes()
     });
     
-    // Calculate position based on business hours
-    const hour = time.getHours() - BUSINESS_HOURS.start;
-    const minute = time.getMinutes();
+    // Calculate position based on business hours and 15-minute intervals
+    const hoursSinceStart = time.getHours() - BUSINESS_HOURS.start;
+    const minutesSinceHourStart = time.getMinutes();
     
-    // Calculate exact position
-    const position = hour * TIME_SLOT_HEIGHT + (minute / 60) * TIME_SLOT_HEIGHT;
+    // Calculate total 15-minute intervals since the start of business hours
+    const totalIntervals = (hoursSinceStart * 4) + (minutesSinceHourStart / 15);
+    
+    // Calculate position in pixels (each interval is TIME_SLOT_HEIGHT pixels)
+    const position = totalIntervals * TIME_SLOT_HEIGHT;
     
     console.log('Position calculation:', {
       hour: time.getHours(),
       businessStart: BUSINESS_HOURS.start,
-      hourDiff: hour,
-      minute,
+      hourDiff: hoursSinceStart,
+      minute: minutesSinceHourStart,
+      totalIntervals,
       position
     });
     
     return position;
   };
   
-  // Update the getAppointmentDuration function to be more precise
+  // Update the getAppointmentDuration function to work with 15-minute intervals
   const getAppointmentDuration = (startTime: string, endTime: string) => {
     // Use normalized dates to ensure consistent time interpretation
     const start = normalizeDateTime(startTime);
@@ -542,8 +551,11 @@ export default function StylistDayView({
     // Calculate duration in minutes
     const durationInMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     
+    // Calculate number of 15-minute intervals
+    const intervals = durationInMinutes / 15;
+    
     // Convert to pixels based on TIME_SLOT_HEIGHT
-    return (durationInMinutes / 60) * TIME_SLOT_HEIGHT;
+    return intervals * TIME_SLOT_HEIGHT;
   };
 
   const navigate = useNavigate();
@@ -769,8 +781,8 @@ export default function StylistDayView({
     right: theme.spacing(0.5),
     backgroundColor: theme.palette.error.main,
     color: theme.palette.error.contrastText,
-    padding: theme.spacing(1),
-    zIndex: 1,
+    padding: theme.spacing(0.5),
+    zIndex: 10,
     borderRadius: theme.shape.borderRadius,
     borderLeft: `4px solid ${theme.palette.error.dark}`,
     boxShadow: theme.shadows[2],
@@ -788,9 +800,16 @@ export default function StylistDayView({
       </StylistHeader>
       {timeSlots.map(({ hour, minute }) => (
         <TimeSlot key={`time-${hour}-${minute}`}>
-          <TimeLabel>
-            {format(new Date().setHours(hour, minute), 'h:mm a')}
-          </TimeLabel>
+          {/* Only show the hour label for the first slot of each hour */}
+          {minute === 0 ? (
+            <TimeLabel>
+              {format(new Date().setHours(hour, minute), 'h:mm a')}
+            </TimeLabel>
+          ) : (
+            <TimeLabel sx={{ fontSize: '0.65rem', opacity: 0.7 }}>
+              {format(new Date().setHours(hour, minute), 'h:mm a')}
+            </TimeLabel>
+          )}
         </TimeSlot>
       ))}
     </TimeColumn>
