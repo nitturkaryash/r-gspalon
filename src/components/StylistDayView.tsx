@@ -133,74 +133,6 @@ const TimeSlot = styled(Box, {
     },
 }));
 
-// Fix the isBreakTime function to correctly check for overlaps with 15-minute precision
-const isBreakTime = (stylistId: string, hour: number, minute: number) => {
-  const stylist = stylists.find(s => s.id === stylistId);
-  if (!stylist || !stylist.breaks || stylist.breaks.length === 0) {
-    return false;
-  }
-  
-  try {
-    // Create a date object for the slot time
-    const slotTime = new Date(currentDate);
-    slotTime.setHours(hour, minute, 0, 0);
-    const slotTimeValue = slotTime.getTime();
-    
-    // Create a date object for the end of the slot (now 15 minutes)
-    const slotEndTime = new Date(currentDate);
-    slotEndTime.setHours(hour, minute + 15, 0, 0); // Add 15 minutes for the end of the slot
-    const slotEndTimeValue = slotEndTime.getTime();
-    
-    // Get only breaks for the current day to improve performance
-    const todayBreaks = stylist.breaks.filter((breakItem: StylistBreak) => {
-      const breakDate = new Date(breakItem.startTime);
-      return isSameDay(breakDate, currentDate);
-    });
-    
-    // Check if the slot time overlaps with any break period
-    return todayBreaks.some((breakItem: StylistBreak) => {
-      try {
-        const breakStart = new Date(breakItem.startTime).getTime();
-        const breakEnd = new Date(breakItem.endTime).getTime();
-        
-        // Debug log to help identify issues
-        if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
-          console.log('Break time check:', {
-            slotTime: slotTime.toISOString(),
-            slotEndTime: slotEndTime.toISOString(),
-            breakStart: new Date(breakItem.startTime).toISOString(),
-            breakEnd: new Date(breakItem.endTime).toISOString(),
-            isOverlapping: (
-              // Check if the slot starts during a break
-              (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-              // Check if the slot ends during a break
-              (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-              // Check if the slot completely contains a break
-              (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
-            )
-          });
-        }
-        
-        // Check for any overlap between the slot and the break
-        return (
-          // Check if the slot starts during a break
-          (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-          // Check if the slot ends during a break
-          (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-          // Check if the slot completely contains a break
-          (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
-        );
-      } catch (error) {
-        console.error('Error checking break time:', error, breakItem);
-        return false;
-      }
-    });
-  } catch (error) {
-    console.error('Error in isBreakTime:', error);
-    return false;
-  }
-};
-
 // Fix the AppointmentSlot component to ensure no invisible blocking elements
 const AppointmentSlot = styled(Box)(({ theme }) => ({
   height: TIME_SLOT_HEIGHT / 4, // 15-minute height
@@ -635,6 +567,74 @@ export default function StylistDayView({
   // Add handleSnackbarClose function
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
+  };
+
+  // Check if a time slot conflicts with any stylist break
+  const isBreakTime = (stylistId: string, hour: number, minute: number) => {
+    const stylist = stylists.find(s => s.id === stylistId);
+    if (!stylist || !stylist.breaks || stylist.breaks.length === 0) {
+      return false;
+    }
+    
+    try {
+      // Create a date object for the slot time
+      const slotTime = new Date(currentDate);
+      slotTime.setHours(hour, minute, 0, 0);
+      const slotTimeValue = slotTime.getTime();
+      
+      // Create a date object for the end of the slot (now 15 minutes)
+      const slotEndTime = new Date(currentDate);
+      slotEndTime.setHours(hour, minute + 15, 0, 0); // Add 15 minutes for the end of the slot
+      const slotEndTimeValue = slotEndTime.getTime();
+      
+      // Get only breaks for the current day to improve performance
+      const todayBreaks = stylist.breaks.filter((breakItem: StylistBreak) => {
+        const breakDate = new Date(breakItem.startTime);
+        return isSameDay(breakDate, currentDate);
+      });
+      
+      // Check if the slot time overlaps with any break period
+      return todayBreaks.some((breakItem: StylistBreak) => {
+        try {
+          const breakStart = new Date(breakItem.startTime).getTime();
+          const breakEnd = new Date(breakItem.endTime).getTime();
+          
+          // Debug log to help identify issues
+          if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
+            console.log('Break time check:', {
+              slotTime: slotTime.toISOString(),
+              slotEndTime: slotEndTime.toISOString(),
+              breakStart: new Date(breakItem.startTime).toISOString(),
+              breakEnd: new Date(breakItem.endTime).toISOString(),
+              isOverlapping: (
+                // Check if the slot starts during a break
+                (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
+                // Check if the slot ends during a break
+                (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
+                // Check if the slot completely contains a break
+                (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
+              )
+            });
+          }
+          
+          // Check for any overlap between the slot and the break
+          return (
+            // Check if the slot starts during a break
+            (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
+            // Check if the slot ends during a break
+            (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
+            // Check if the slot completely contains a break
+            (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
+          );
+        } catch (error) {
+          console.error('Error checking break time:', error, breakItem);
+          return false;
+        }
+      });
+    } catch (error) {
+      console.error('Error in isBreakTime:', error);
+      return false;
+    }
   };
 
   return (
