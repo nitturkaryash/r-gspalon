@@ -43,8 +43,8 @@ const BUSINESS_HOURS = {
   end: 22,   // 10 PM
 };
 
-// Update the TIME_SLOT_HEIGHT constant to account for 15-minute intervals
-const TIME_SLOT_HEIGHT = 120; // Height in pixels for an hour (4 * 15-minute slots = 30px each)
+// Update the time slot height to be exactly 60px per hour
+const TIME_SLOT_HEIGHT = 60; // Height in pixels for one hour
 
 // Styled components
 const DayViewContainer = styled(Paper)(({ theme }) => ({
@@ -52,9 +52,9 @@ const DayViewContainer = styled(Paper)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
-  backgroundColor: theme.palette.background.default, // Off-white background
+  backgroundColor: theme.palette.background.default,
   border: `1px solid ${theme.palette.divider}`,
-  borderRadius: 28, // Increased border radius for main container
+  borderRadius: theme.shape.borderRadius,
 }));
 
 const DayViewHeader = styled(Box)(({ theme }) => ({
@@ -97,46 +97,39 @@ const StylistHeader = styled(Box)(({ theme }) => ({
   padding: theme.spacing(1),
   textAlign: 'center',
   borderBottom: `1px solid ${theme.palette.divider}`,
-  backgroundColor: theme.palette.salon.oliveLight, // Light olive background
-  color: theme.palette.common.white, // White text for contrast
+  backgroundColor: theme.palette.salon.oliveLight,
   position: 'sticky',
   top: 0,
-  zIndex: 1,
-  fontWeight: 600,
-  borderRadius: '16px 16px 0 0', // Rounded top corners
+  zIndex: 3,
+  height: 48, // Fixed height for the header
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}));
+
+const TimeSlot = styled(Box)(({ theme }) => ({
+  height: TIME_SLOT_HEIGHT,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  display: 'flex',
+  alignItems: 'center',
+  padding: theme.spacing(1),
+  backgroundColor: theme.palette.background.paper,
+  position: 'relative',
+  '&:last-child': {
+    borderBottom: 'none',
+  },
+}));
+
+const TimeLabel = styled(Typography)(({ theme }) => ({
+  fontSize: '0.75rem',
+  color: theme.palette.text.secondary,
+  width: '100%',
+  textAlign: 'center',
 }));
 
 // First, fix the TimeSlot component to ensure consistent styling
-const TimeSlot = styled(Box, {
-  shouldForwardProp: (prop) => prop !== 'isQuarterHour' && prop !== 'isHalfHour' && prop !== 'isThreeQuarterHour',
-})<{ isQuarterHour: boolean; isHalfHour: boolean; isThreeQuarterHour: boolean }>(
-  ({ theme, isQuarterHour, isHalfHour, isThreeQuarterHour }) => ({
-    height: TIME_SLOT_HEIGHT / 4, // 15-minute height
-    borderBottom: `1px solid ${
-      isHalfHour 
-        ? theme.palette.divider 
-        : isQuarterHour || isThreeQuarterHour
-          ? theme.palette.grey[200]
-          : theme.palette.grey[300]
-    }`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingRight: theme.spacing(1),
-    color: theme.palette.text.secondary,
-    fontSize: '0.75rem',
-    backgroundColor: isQuarterHour || isHalfHour || isThreeQuarterHour 
-      ? 'transparent' 
-      : theme.palette.salon.cream,
-    // Ensure consistent styling
-    '&:first-of-type': {
-      borderTop: `1px solid ${theme.palette.grey[300]}`,
-    },
-}));
-
-// Fix the AppointmentSlot component to ensure no invisible blocking elements
 const AppointmentSlot = styled(Box)(({ theme }) => ({
-  height: TIME_SLOT_HEIGHT / 4, // 15-minute height
+  height: TIME_SLOT_HEIGHT,
   borderBottom: `1px solid ${theme.palette.divider}`,
   cursor: 'pointer',
   transition: 'background-color 0.2s',
@@ -151,7 +144,7 @@ const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) 
   position: 'absolute',
   left: theme.spacing(0.5),
   right: theme.spacing(0.5),
-  height: (duration / 30) * (TIME_SLOT_HEIGHT / 2), // Convert duration to height
+  height: (duration / 30) * TIME_SLOT_HEIGHT, // Convert duration to height
   backgroundColor: theme.palette.primary.main, // Olive green from theme
   color: theme.palette.primary.contrastText, // White text for contrast
   borderRadius: 8, // Less rounded corners to prevent text from being hidden
@@ -177,7 +170,7 @@ const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
   left: 0,
   right: 0,
-  height: (duration / 15) * (TIME_SLOT_HEIGHT / 4), // Adjust for 15-minute slots
+  height: (duration / 15) * TIME_SLOT_HEIGHT, // Adjust for 15-minute slots
   backgroundColor: '#d32f2f', // Solid red color
   color: '#ffffff',
   borderRadius: 0,
@@ -493,28 +486,20 @@ export default function StylistDayView({
     return isSameDay(appointmentDate, currentDate);
   });
   
-  // Update the getAppointmentPosition function to be more precise with 15-minute intervals
+  // Update the getAppointmentPosition function to be more precise
   const getAppointmentPosition = (startTime: string) => {
     const time = new Date(startTime);
-    const hour = time.getHours();
+    const hour = time.getHours() - BUSINESS_HOURS.start;
     const minute = time.getMinutes();
-    
-    // Calculate slots from the start of business hours with 15-minute precision
-    const hourOffset = hour - BUSINESS_HOURS.start;
-    const minuteOffset = minute / 15; // Convert minutes to 15-minute slots
-    
-    // Calculate the exact position based on hours and minutes
-    return (hourOffset * 4 + minuteOffset) * (TIME_SLOT_HEIGHT / 4);
+    return hour * TIME_SLOT_HEIGHT + (minute / 60) * TIME_SLOT_HEIGHT;
   };
   
-  // Update the duration calculations for break cards and appointments
+  // Update the getAppointmentDuration function to be more precise
   const getAppointmentDuration = (startTime: string, endTime: string) => {
     const start = new Date(startTime);
     const end = new Date(endTime);
-    const durationMs = end.getTime() - start.getTime();
-    const durationMinutes = durationMs / (1000 * 60);
-    
-    return durationMinutes;
+    const durationInMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+    return (durationInMinutes / 60) * TIME_SLOT_HEIGHT;
   };
 
   const navigate = useNavigate();
@@ -706,6 +691,39 @@ export default function StylistDayView({
     }
   };
 
+  const BreakBlock = styled(Box)(({ theme }) => ({
+    position: 'absolute',
+    left: theme.spacing(0.5),
+    right: theme.spacing(0.5),
+    backgroundColor: theme.palette.error.main,
+    color: theme.palette.error.contrastText,
+    padding: theme.spacing(1),
+    zIndex: 1,
+    borderRadius: theme.shape.borderRadius,
+    borderLeft: `4px solid ${theme.palette.error.dark}`,
+    boxShadow: theme.shadows[2],
+    overflow: 'hidden',
+    '&:hover': {
+      backgroundColor: theme.palette.error.dark,
+    },
+  }));
+
+  // Update the time column rendering
+  const renderTimeColumn = () => (
+    <TimeColumn>
+      <StylistHeader>
+        <TimeLabel variant="subtitle2">Time</TimeLabel>
+      </StylistHeader>
+      {timeSlots.map(({ hour, minute }) => (
+        <TimeSlot key={`time-${hour}-${minute}`}>
+          <TimeLabel>
+            {format(new Date().setHours(hour, minute), 'h:mm a')}
+          </TimeLabel>
+        </TimeSlot>
+      ))}
+    </TimeColumn>
+  );
+
   return (
     <DayViewContainer>
       <DayViewHeader>
@@ -728,23 +746,7 @@ export default function StylistDayView({
       </DayViewHeader>
       
       <ScheduleGrid>
-        {/* Time column */}
-        <TimeColumn>
-          <StylistHeader>
-            <Typography variant="subtitle2">Time</Typography>
-          </StylistHeader>
-          
-          {timeSlots.map((slot, index) => (
-            <TimeSlot 
-              key={`time-${slot.hour}-${slot.minute}`}
-              isQuarterHour={slot.minute === 15}
-              isHalfHour={slot.minute === 30}
-              isThreeQuarterHour={slot.minute === 45}
-            >
-              {slot.minute === 0 && formatHour(slot.hour)}
-            </TimeSlot>
-          ))}
-        </TimeColumn>
+        {renderTimeColumn()}
         
         {/* Stylist columns */}
         {stylists.map(stylist => (
@@ -818,58 +820,37 @@ export default function StylistDayView({
             
             {/* Stylist Breaks */}
             {getStylistBreaks(stylist.id).map((breakItem: StylistBreak) => {
-              // Parse the break times precisely
-              const breakStart = new Date(breakItem.startTime);
-              const breakEnd = new Date(breakItem.endTime);
-              
-              // Calculate the exact position based on the break start time with 15-minute precision
+              const breakDate = new Date(breakItem.startTime);
+              // Only show breaks for the current day
+              if (!isSameDay(breakDate, currentDate)) return null;
+
               const top = getAppointmentPosition(breakItem.startTime);
-              const duration = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
-              
-              // Calculate the height precisely based on 15-minute intervals
-              const heightInPixels = (duration / 15) * (TIME_SLOT_HEIGHT / 4);
-              
-              // Debug logging to help diagnose positioning issues
-              console.log('Break rendering:', {
-                breakId: breakItem.id,
-                startTime: breakStart.toLocaleTimeString(),
-                endTime: breakEnd.toLocaleTimeString(),
-                duration,
-                top,
-                heightInPixels
-              });
-              
+              const height = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
+
               return (
-                <Box
-                  key={`break-${breakItem.id}`}
+                <BreakBlock
+                  key={breakItem.id}
                   sx={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    top: top,
-                    height: heightInPixels,
-                    backgroundColor: '#d32f2f', // Solid red color
-                    color: '#ffffff',
-                    padding: 1, // Use a simple numeric value instead of theme.spacing
-                    overflow: 'hidden',
-                    zIndex: 30, // Ensure it's above everything
+                    top: `${top}px`,
+                    height: `${height}px`,
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: 'center',
+                    justifyContent: 'flex-start',
+                    gap: 0.5
                   }}
                 >
-                  <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
                     Break Time
                   </Typography>
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                    {format(new Date(breakItem.startTime), 'h:mm a')} - {format(new Date(breakItem.endTime), 'h:mm a')}
+                  </Typography>
                   {breakItem.reason && (
-                    <Typography variant="caption" sx={{ color: 'white' }}>
+                    <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
                       {breakItem.reason}
                     </Typography>
                   )}
-                  <Typography variant="caption" sx={{ color: 'white' }}>
-                    {formatTime(breakStart)} - {formatTime(breakEnd)}
-                  </Typography>
-                </Box>
+                </BreakBlock>
               );
             })}
           </StylistColumn>
