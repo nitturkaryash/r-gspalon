@@ -865,20 +865,21 @@ export default function StylistDayView({
   );
 
   const { serviceCollections } = useServiceCollections();
+  const { services: collectionServices, isLoading: isLoadingCollectionServices } = useCollectionServices();
   const [selectedServiceCollection, setSelectedServiceCollection] = useState<string>('');
   const [serviceSearchQuery, setServiceSearchQuery] = useState<string>('');
 
   const getFilteredServices = () => {
-    if (!services) return [];
+    // Use collectionServices if available, otherwise fall back to services
+    const allServices = collectionServices || services || [];
     
-    let filteredServices = [...services];
+    let filteredServices = [...allServices];
     
     // Filter by collection if one is selected
     if (selectedServiceCollection) {
-      const collectionServices = services.filter(service => 
+      filteredServices = filteredServices.filter(service => 
         service.collection_id === selectedServiceCollection
       );
-      filteredServices = collectionServices;
     }
     
     // Filter by search query if one is entered
@@ -889,6 +890,14 @@ export default function StylistDayView({
         (service.description && service.description.toLowerCase().includes(query))
       );
     }
+    
+    // Log for debugging
+    console.log('Filtered services:', {
+      selectedCollection: selectedServiceCollection,
+      searchQuery: serviceSearchQuery,
+      servicesCount: filteredServices.length,
+      services: filteredServices
+    });
     
     return filteredServices;
   };
@@ -1124,10 +1133,10 @@ export default function StylistDayView({
                     mb: 2, 
                     p: 2, 
                     border: '1px solid', 
-                    borderColor: 'primary.main', 
+                    borderColor: 'success.main', 
                     borderRadius: 1,
-                    bgcolor: 'primary.light',
-                    color: 'primary.contrastText'
+                    bgcolor: 'success.light',
+                    color: 'success.contrastText'
                   }}
                 >
                   <Typography variant="subtitle1" fontWeight="bold">
@@ -1155,7 +1164,7 @@ export default function StylistDayView({
                             transition: 'all 0.2s',
                             border: editFormData.serviceId === service.id ? '2px solid' : '1px solid',
                             borderColor: editFormData.serviceId === service.id ? 'primary.main' : 'divider',
-                            bgcolor: editFormData.serviceId === service.id ? 'primary.50' : 'background.paper',
+                            bgcolor: editFormData.serviceId === service.id ? 'rgba(25, 118, 210, 0.08)' : 'background.paper',
                             '&:hover': {
                               bgcolor: 'action.hover',
                               transform: 'translateY(-2px)',
