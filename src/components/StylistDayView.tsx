@@ -486,19 +486,63 @@ export default function StylistDayView({
     return isSameDay(appointmentDate, currentDate);
   });
   
+  // Add a helper function to ensure dates are consistently handled
+  const normalizeDateTime = (dateTimeString: string) => {
+    const dateTime = new Date(dateTimeString);
+    
+    // Explicitly preserve the time components while normalizing to the current date
+    return new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+      dateTime.getHours(),
+      dateTime.getMinutes(),
+      0,
+      0
+    );
+  };
+
   // Update the getAppointmentPosition function to be more precise
   const getAppointmentPosition = (startTime: string) => {
-    const time = new Date(startTime);
+    // Use the normalized date to ensure consistent time interpretation
+    const time = normalizeDateTime(startTime);
+    
+    // Log for debugging the time being processed
+    console.log('Calculating position for:', {
+      timeString: startTime,
+      normalizedTime: time.toLocaleTimeString(),
+      hours: time.getHours(),
+      minutes: time.getMinutes()
+    });
+    
+    // Calculate position based on business hours
     const hour = time.getHours() - BUSINESS_HOURS.start;
     const minute = time.getMinutes();
-    return hour * TIME_SLOT_HEIGHT + (minute / 60) * TIME_SLOT_HEIGHT;
+    
+    // Calculate exact position
+    const position = hour * TIME_SLOT_HEIGHT + (minute / 60) * TIME_SLOT_HEIGHT;
+    
+    console.log('Position calculation:', {
+      hour: time.getHours(),
+      businessStart: BUSINESS_HOURS.start,
+      hourDiff: hour,
+      minute,
+      position
+    });
+    
+    return position;
   };
   
   // Update the getAppointmentDuration function to be more precise
   const getAppointmentDuration = (startTime: string, endTime: string) => {
-    const start = new Date(startTime);
-    const end = new Date(endTime);
+    // Use normalized dates to ensure consistent time interpretation
+    const start = normalizeDateTime(startTime);
+    const end = normalizeDateTime(endTime);
+    
+    // Calculate duration in minutes
     const durationInMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+    
+    // Convert to pixels based on TIME_SLOT_HEIGHT
     return (durationInMinutes / 60) * TIME_SLOT_HEIGHT;
   };
 
@@ -580,9 +624,9 @@ export default function StylistDayView({
       slotTime.setHours(hour, minute, 0, 0);
       const slotTimeValue = slotTime.getTime();
       
-      // Create a date object for the end of the slot (15 minutes)
+      // Create a date object for the end of the slot (add 30 minutes for a full slot)
       const slotEndTime = new Date(currentDate);
-      slotEndTime.setHours(hour, minute + 15, 0, 0); // Add 15 minutes for the end of the slot
+      slotEndTime.setHours(hour, minute + 30, 0, 0);
       const slotEndTimeValue = slotEndTime.getTime();
       
       // Get only breaks for the current day to improve performance
@@ -591,31 +635,29 @@ export default function StylistDayView({
         return isSameDay(breakDate, currentDate);
       });
       
+      // Debug log for specific hour to track issues
+      if (hour === 11) {
+        console.log('Checking break at 11:00:', {
+          stylistId,
+          hour,
+          minute,
+          slotTime: slotTime.toLocaleTimeString(),
+          slotEndTime: slotEndTime.toLocaleTimeString(),
+          breaks: todayBreaks.map(b => ({
+            startTime: new Date(b.startTime).toLocaleTimeString(),
+            endTime: new Date(b.endTime).toLocaleTimeString(),
+            normalizedStart: normalizeDateTime(b.startTime).toLocaleTimeString(),
+            normalizedEnd: normalizeDateTime(b.endTime).toLocaleTimeString()
+          }))
+        });
+      }
+      
       // Check if the slot time overlaps with any break period
       return todayBreaks.some((breakItem: StylistBreak) => {
         try {
-          const breakStart = new Date(breakItem.startTime).getTime();
-          const breakEnd = new Date(breakItem.endTime).getTime();
-          
-          // Debug log to help identify issues
-          if (hour === 1 || hour === 2) {
-            console.log('Break time check:', {
-              hour,
-              minute,
-              slotTime: slotTime.toLocaleTimeString(),
-              slotEndTime: slotEndTime.toLocaleTimeString(),
-              breakStart: new Date(breakItem.startTime).toLocaleTimeString(),
-              breakEnd: new Date(breakItem.endTime).toLocaleTimeString(),
-              isOverlapping: (
-                // Check if the slot starts during a break
-                (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-                // Check if the slot ends during a break
-                (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-                // Check if the slot completely contains a break
-                (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
-              )
-            });
-          }
+          // Use normalized times for consistent handling
+          const breakStart = normalizeDateTime(breakItem.startTime).getTime();
+          const breakEnd = normalizeDateTime(breakItem.endTime).getTime();
           
           // Check for any overlap between the slot and the break
           return (
@@ -624,7 +666,7 @@ export default function StylistDayView({
             // Check if the slot ends during a break
             (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
             // Check if the slot completely contains a break
-            (slotTimeValue <= breakStart && slotTimeValue >= breakEnd)
+            (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
           );
         } catch (error) {
           console.error('Error checking break time:', error, breakItem);
@@ -677,9 +719,39 @@ export default function StylistDayView({
         return;
       }
 
+      // Ensure the dates are interpreted correctly by explicitly setting them to the current date
+      // This fixes potential timezone issues
+      const formattedStartDate = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        currentDate.getDate(),
+        startHour,
+        startMinute,
+        0,
+        0
+      );
+
+      const formattedEndDate = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        currentDate.getDate(),
+        endHour,
+        endMinute,
+        0,
+        0
+      );
+
+      console.log('Adding break with times:', {
+        startRaw: startDate.toISOString(),
+        endRaw: endDate.toISOString(),
+        startFormatted: formattedStartDate.toISOString(),
+        endFormatted: formattedEndDate.toISOString(),
+        currentDate: currentDate.toISOString()
+      });
+
       await onAddBreak(selectedStylist, {
-        startTime: startDate.toISOString(),
-        endTime: endDate.toISOString(),
+        startTime: formattedStartDate.toISOString(),
+        endTime: formattedEndDate.toISOString(),
         reason: breakFormData.reason
       });
 
@@ -823,6 +895,21 @@ export default function StylistDayView({
               const breakDate = new Date(breakItem.startTime);
               // Only show breaks for the current day
               if (!isSameDay(breakDate, currentDate)) return null;
+              
+              // Normalize the break times to ensure consistent handling
+              const breakStartTime = normalizeDateTime(breakItem.startTime);
+              const breakEndTime = normalizeDateTime(breakItem.endTime);
+              
+              // Log the break times for debugging
+              console.log('Break rendering:', {
+                id: breakItem.id,
+                startISOString: breakItem.startTime,
+                endISOString: breakItem.endTime,
+                normalizedStartTime: breakStartTime.toLocaleTimeString(),
+                normalizedEndTime: breakEndTime.toLocaleTimeString(),
+                startHour: breakStartTime.getHours(),
+                startMinute: breakStartTime.getMinutes()
+              });
 
               const top = getAppointmentPosition(breakItem.startTime);
               const height = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
@@ -843,7 +930,7 @@ export default function StylistDayView({
                     Break Time
                   </Typography>
                   <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                    {format(new Date(breakItem.startTime), 'h:mm a')} - {format(new Date(breakItem.endTime), 'h:mm a')}
+                    {format(breakStartTime, 'h:mm a')} - {format(breakEndTime, 'h:mm a')}
                   </Typography>
                   {breakItem.reason && (
                     <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
