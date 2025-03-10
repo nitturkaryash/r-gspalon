@@ -124,10 +124,54 @@ export function useStylists() {
       const index = mockStylists.findIndex(s => s.id === updates.id);
       if (index === -1) throw new Error('Stylist not found');
       
+      // Log the update for debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Updating stylist:', {
+          existingData: mockStylists[index],
+          updates: updates
+        });
+      }
+      
+      // Ensure breaks are properly handled
+      let processedUpdates = { ...updates };
+      
+      // If breaks are provided, ensure they are properly formatted
+      if (updates.breaks) {
+        // Validate each break to ensure dates are properly formatted
+        processedUpdates.breaks = updates.breaks.map(breakItem => {
+          // Ensure startTime and endTime are valid ISO strings
+          let startTime = breakItem.startTime;
+          let endTime = breakItem.endTime;
+          
+          // If they're not valid ISO strings, try to fix them
+          if (!(typeof startTime === 'string' && startTime.includes('T'))) {
+            try {
+              startTime = new Date(startTime).toISOString();
+            } catch (e) {
+              console.error('Invalid start time:', startTime, e);
+            }
+          }
+          
+          if (!(typeof endTime === 'string' && endTime.includes('T'))) {
+            try {
+              endTime = new Date(endTime).toISOString();
+            } catch (e) {
+              console.error('Invalid end time:', endTime, e);
+            }
+          }
+          
+          return {
+            ...breakItem,
+            startTime,
+            endTime
+          };
+        });
+      }
+      
       const updatedStylists = [...mockStylists];
       updatedStylists[index] = {
         ...updatedStylists[index],
-        ...updates
+        ...processedUpdates
       };
       
       mockStylists = updatedStylists;

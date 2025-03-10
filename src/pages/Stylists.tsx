@@ -82,6 +82,15 @@ const initialFormData: StylistFormData = {
   breaks: []
 }
 
+// Add a debug function to log break dates
+const debugBreakDate = (label: string, date: Date | null) => {
+  if (date) {
+    console.log(`${label}: ${date.toISOString()}`);
+  } else {
+    console.log(`${label}: null`);
+  }
+};
+
 export default function Stylists() {
   const { stylists, isLoading, createStylist, updateStylist, deleteStylist } = useStylists()
   const { services } = useServices()
@@ -89,13 +98,11 @@ export default function Stylists() {
   const [formData, setFormData] = useState<StylistFormData>(initialFormData)
   const [editingId, setEditingId] = useState<string | null>(null)
   
-  // Break scheduling state
+  // Break scheduling state - initialize with null instead of default dates
   const [breakDialogOpen, setBreakDialogOpen] = useState(false)
-  const [breakDate, setBreakDate] = useState<Date | null>(new Date())
-  const [breakStartTime, setBreakStartTime] = useState<Date | null>(new Date())
-  const [breakEndTime, setBreakEndTime] = useState<Date | null>(
-    new Date(new Date().setHours(new Date().getHours() + 1))
-  )
+  const [breakDate, setBreakDate] = useState<Date | null>(null)
+  const [breakStartTime, setBreakStartTime] = useState<Date | null>(null)
+  const [breakEndTime, setBreakEndTime] = useState<Date | null>(null)
   const [breakReason, setBreakReason] = useState('')
 
   const handleOpen = () => setOpen(true)
@@ -140,16 +147,29 @@ export default function Stylists() {
 
   // Add functions to handle break scheduling
   const handleOpenBreakDialog = () => {
-    setBreakDialogOpen(true)
+    // Initialize with current date when opening the dialog
+    const now = new Date();
+    setBreakDate(now);
+    
+    // Set default start time (current hour)
+    const startTime = new Date();
+    setBreakStartTime(startTime);
+    
+    // Set default end time (current hour + 1)
+    const endTime = new Date();
+    endTime.setHours(endTime.getHours() + 1);
+    setBreakEndTime(endTime);
+    
+    setBreakDialogOpen(true);
   }
 
   const handleCloseBreakDialog = () => {
-    setBreakDialogOpen(false)
+    setBreakDialogOpen(false);
     // Reset break form data
-    setBreakDate(new Date())
-    setBreakStartTime(new Date())
-    setBreakEndTime(new Date(new Date().setHours(new Date().getHours() + 1)))
-    setBreakReason('')
+    setBreakDate(null);
+    setBreakStartTime(null);
+    setBreakEndTime(null);
+    setBreakReason('');
   }
 
   const handleAddBreak = () => {
@@ -158,47 +178,76 @@ export default function Stylists() {
       return;
     }
 
-    // Create a new Date object for the break date to ensure we're not modifying the original
-    const breakDateClone = new Date(
-      breakDate.getFullYear(),
-      breakDate.getMonth(),
-      breakDate.getDate()
-    );
+    // Debug the input dates
+    debugBreakDate('Break Date', breakDate);
+    debugBreakDate('Break Start Time', breakStartTime);
+    debugBreakDate('Break End Time', breakEndTime);
 
-    // Create start date by properly cloning the date first
-    const startDateTime = new Date(breakDateClone);
-    startDateTime.setHours(
-      breakStartTime.getHours(),
-      breakStartTime.getMinutes(),
-      0,
-      0
-    );
+    try {
+      // Create a new Date object for the break date to ensure we're not modifying the original
+      // Use the full date constructor to avoid timezone issues
+      const breakDateClone = new Date(
+        breakDate.getFullYear(),
+        breakDate.getMonth(),
+        breakDate.getDate(),
+        0, 0, 0, 0
+      );
+      
+      debugBreakDate('Break Date Clone', breakDateClone);
 
-    // Create end date by properly cloning the date first
-    const endDateTime = new Date(breakDateClone);
-    endDateTime.setHours(
-      breakEndTime.getHours(),
-      breakEndTime.getMinutes(),
-      0,
-      0
-    );
+      // Create start date by properly cloning the date first
+      const startDateTime = new Date(breakDateClone);
+      startDateTime.setHours(
+        breakStartTime.getHours(),
+        breakStartTime.getMinutes(),
+        0,
+        0
+      );
+      
+      debugBreakDate('Start Date Time', startDateTime);
 
-    // Create new break
-    const newBreak: StylistBreak = {
-      id: uuidv4(),
-      startTime: startDateTime.toISOString(),
-      endTime: endDateTime.toISOString(),
-      reason: breakReason
-    };
+      // Create end date by properly cloning the date first
+      const endDateTime = new Date(breakDateClone);
+      endDateTime.setHours(
+        breakEndTime.getHours(),
+        breakEndTime.getMinutes(),
+        0,
+        0
+      );
+      
+      debugBreakDate('End Date Time', endDateTime);
 
-    // Update form data with the new break
-    setFormData({
-      ...formData,
-      breaks: [...(formData.breaks || []), newBreak]
-    });
+      // Validate end time is after start time
+      if (endDateTime <= startDateTime) {
+        toast.error('End time must be after start time');
+        return;
+      }
 
-    handleCloseBreakDialog();
-    toast.success('Break scheduled');
+      // Create new break with explicit ISO strings
+      const newBreak: StylistBreak = {
+        id: uuidv4(),
+        startTime: startDateTime.toISOString(),
+        endTime: endDateTime.toISOString(),
+        reason: breakReason
+      };
+      
+      console.log('New Break:', newBreak);
+
+      // Update form data with the new break
+      const updatedBreaks = [...(formData.breaks || []), newBreak];
+      console.log('Updated Breaks:', updatedBreaks);
+      
+      setFormData({
+        ...formData,
+        breaks: updatedBreaks
+      });
+
+      handleCloseBreakDialog();
+      toast.success('Break scheduled');
+    } catch (error) {
+      console.error('Error creating break:', error);
+      toast.error('Failed to create break. Please try again.');
+    }
   };
 
   const handleDeleteBreak = (breakId: string) => {
@@ -211,15 +260,25 @@ export default function Stylists() {
 
   // Format date and time for display
   const formatBreakTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.error('Invalid date string:', dateString);
+        return 'Invalid date';
+      }
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Error formatting date';
+    }
   };
 
   const handleDelete = async (id: string) => {

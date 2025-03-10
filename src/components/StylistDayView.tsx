@@ -505,16 +505,44 @@ export default function StylistDayView({
       return false;
     }
     
-    const slotTime = new Date(currentDate);
-    slotTime.setHours(hour, minute, 0, 0);
-    const slotTimeValue = slotTime.getTime();
-    
-    return stylist.breaks.some((breakItem: StylistBreak) => {
-      const breakStart = new Date(breakItem.startTime).getTime();
-      const breakEnd = new Date(breakItem.endTime).getTime();
+    try {
+      // Create a date object for the slot time
+      const slotTime = new Date(currentDate);
+      slotTime.setHours(hour, minute, 0, 0);
+      const slotTimeValue = slotTime.getTime();
       
-      return slotTimeValue >= breakStart && slotTimeValue < breakEnd;
-    });
+      // Get only breaks for the current day to improve performance
+      const todayBreaks = stylist.breaks.filter((breakItem: StylistBreak) => {
+        const breakDate = new Date(breakItem.startTime);
+        return isSameDay(breakDate, currentDate);
+      });
+      
+      // Check if the slot time is within any break period
+      return todayBreaks.some((breakItem: StylistBreak) => {
+        try {
+          const breakStart = new Date(breakItem.startTime).getTime();
+          const breakEnd = new Date(breakItem.endTime).getTime();
+          
+          // Debug log to help identify issues
+          if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
+            console.log('Break time check:', {
+              slotTime: slotTime.toISOString(),
+              breakStart: new Date(breakItem.startTime).toISOString(),
+              breakEnd: new Date(breakItem.endTime).toISOString(),
+              isWithinBreak: (slotTimeValue >= breakStart && slotTimeValue < breakEnd)
+            });
+          }
+          
+          return slotTimeValue >= breakStart && slotTimeValue < breakEnd;
+        } catch (error) {
+          console.error('Error checking break time:', error, breakItem);
+          return false;
+        }
+      });
+    } catch (error) {
+      console.error('Error in isBreakTime:', error);
+      return false;
+    }
   };
 
   // Get stylist breaks for the current day
@@ -526,8 +554,26 @@ export default function StylistDayView({
     
     // Filter breaks for the current day
     return stylist.breaks.filter((breakItem: StylistBreak) => {
-      const breakDate = new Date(breakItem.startTime);
-      return isSameDay(breakDate, currentDate);
+      try {
+        const breakDate = new Date(breakItem.startTime);
+        
+        // Debug log to help identify issues
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Break date comparison:', {
+            breakId: breakItem.id,
+            breakStartTime: breakItem.startTime,
+            breakDate: breakDate.toISOString(),
+            currentDate: currentDate.toISOString(),
+            isSameDay: isSameDay(breakDate, currentDate)
+          });
+        }
+        
+        // Use date-fns isSameDay for reliable date comparison
+        return isSameDay(breakDate, currentDate);
+      } catch (error) {
+        console.error('Error processing break date:', error, breakItem);
+        return false;
+      }
     });
   };
 
