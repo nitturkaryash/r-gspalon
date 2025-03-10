@@ -689,7 +689,7 @@ export default function StylistDayView({
           minute,
           slotTime: slotTime.toLocaleTimeString(),
           slotEndTime: slotEndTime.toLocaleTimeString(),
-          breaks: todayBreaks.map(b => ({
+          breaks: todayBreaks.map((b: StylistBreak) => ({
             startTime: new Date(b.startTime).toLocaleTimeString(),
             endTime: new Date(b.endTime).toLocaleTimeString(),
             normalizedStart: normalizeDateTime(b.startTime).toLocaleTimeString(),
