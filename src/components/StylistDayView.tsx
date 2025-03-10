@@ -258,6 +258,7 @@ interface StylistDayViewProps {
   onSelectTimeSlot: (stylistId: string, time: Date) => void;
   onUpdateAppointment?: (appointmentId: string, updates: any) => Promise<void>;
   onDeleteAppointment?: (appointmentId: string) => Promise<void>;
+  onAddBreak?: (stylistId: string, breakData: { startTime: string; endTime: string; reason?: string }) => Promise<void>;
 }
 
 export default function StylistDayView({
@@ -268,11 +269,21 @@ export default function StylistDayView({
   onSelectTimeSlot,
   onUpdateAppointment,
   onDeleteAppointment,
+  onAddBreak,
 }: StylistDayViewProps) {
   const theme = useTheme();
   const [currentDate, setCurrentDate] = useState<Date>(selectedDate || new Date());
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState<boolean>(false);
+  // Add break dialog state
+  const [breakDialogOpen, setBreakDialogOpen] = useState<boolean>(false);
+  const [selectedStylist, setSelectedStylist] = useState<string | null>(null);
+  const [breakFormData, setBreakFormData] = useState({
+    startTime: '',
+    endTime: '',
+    reason: ''
+  });
+  // Add back the editFormData state
   const [editFormData, setEditFormData] = useState({
     clientName: '',
     serviceId: '',
@@ -641,6 +652,60 @@ export default function StylistDayView({
     }
   };
 
+  const handleBreakDialogOpen = (stylistId: string) => {
+    setSelectedStylist(stylistId);
+    setBreakFormData({
+      startTime: `${BUSINESS_HOURS.start}:00`,
+      endTime: `${BUSINESS_HOURS.start + 1}:00`,
+      reason: ''
+    });
+    setBreakDialogOpen(true);
+  };
+
+  const handleBreakDialogClose = () => {
+    setBreakDialogOpen(false);
+    setSelectedStylist(null);
+    setBreakFormData({
+      startTime: '',
+      endTime: '',
+      reason: ''
+    });
+  };
+
+  const handleAddBreak = async () => {
+    if (!selectedStylist || !onAddBreak) return;
+
+    try {
+      // Create Date objects for the break times
+      const startDate = new Date(currentDate);
+      const [startHour, startMinute] = breakFormData.startTime.split(':').map(Number);
+      startDate.setHours(startHour, startMinute, 0, 0);
+
+      const endDate = new Date(currentDate);
+      const [endHour, endMinute] = breakFormData.endTime.split(':').map(Number);
+      endDate.setHours(endHour, endMinute, 0, 0);
+
+      // Ensure end time is after start time
+      if (endDate <= startDate) {
+        setSnackbarMessage('End time must be after start time');
+        setSnackbarOpen(true);
+        return;
+      }
+
+      await onAddBreak(selectedStylist, {
+        startTime: startDate.toISOString(),
+        endTime: endDate.toISOString(),
+        reason: breakFormData.reason
+      });
+
+      handleBreakDialogClose();
+    } catch (error) {
+      console.error('Failed to add break:', error);
+      setSnackbarMessage('Failed to add break');
+      setSnackbarOpen(true);
+    }
+  };
+
   return (
     <DayViewContainer>
       <DayViewHeader>
@@ -684,7 +749,16 @@ export default function StylistDayView({
         {/* Stylist columns */}
         {stylists.map(stylist => (
           <StylistColumn key={stylist.id}>
-            <StylistHeader>
+            <StylistHeader
+              onClick={() => handleBreakDialogOpen(stylist.id)}
+              sx={{
+                cursor: 'pointer',
+                '&:hover': {
+                  backgroundColor: theme.palette.salon.oliveLight,
+                  opacity: 0.9
+                }
+              }}
+            >
               <Typography variant="subtitle2">{stylist.name}</Typography>
             </StylistHeader>
             
@@ -908,6 +982,62 @@ export default function StylistDayView({
           <Button onClick={handleEditDialogClose}>Cancel</Button>
           <Button onClick={handleUpdateAppointment} variant="contained" color="primary">
             Update
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Break Dialog */}
+      <Dialog open={breakDialogOpen} onClose={handleBreakDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Break Time</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={6}>
+              <FormControl fullWidth required>
+                <InputLabel>Start Time</InputLabel>
+                <Select
+                  value={breakFormData.startTime}
+                  onChange={(e) => setBreakFormData({ ...breakFormData, startTime: e.target.value as string })}
+                  label="Start Time"
+                >
+                  {timeOptions.map((option) => (
+                    <MenuItem key={`break-start-${option.value}`} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth required>
+                <InputLabel>End Time</InputLabel>
+                <Select
+                  value={breakFormData.endTime}
+                  onChange={(e) => setBreakFormData({ ...breakFormData, endTime: e.target.value as string })}
+                  label="End Time"
+                >
+                  {timeOptions.map((option) => (
+                    <MenuItem key={`break-end-${option.value}`} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Reason"
+                value={breakFormData.reason}
+                onChange={(e) => setBreakFormData({ ...breakFormData, reason: e.target.value })}
+                fullWidth
+                placeholder="Optional: Enter reason for break"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleBreakDialogClose}>Cancel</Button>
+          <Button onClick={handleAddBreak} variant="contained" color="primary">
+            Add Break
           </Button>
         </DialogActions>
       </Dialog>
