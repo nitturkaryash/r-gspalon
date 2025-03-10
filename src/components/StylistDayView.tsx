@@ -19,7 +19,8 @@ import {
   SelectChangeEvent,
   Snackbar,
   Alert,
-  useTheme
+  useTheme,
+  InputAdornment
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { ChevronLeft, ChevronRight, Today, Receipt } from '@mui/icons-material';
@@ -27,6 +28,10 @@ import { format, addDays, isSameDay } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useClients } from '../hooks/useClients';
 import { StylistBreak } from '../hooks/useStylists';
+import { useServiceCollections } from '../hooks/useServiceCollections';
+import { useCollectionServices } from '../hooks/useCollectionServices';
+import { Search as SearchIcon } from '@mui/icons-material';
+import { formatCurrency } from '../utils/format';
 
 // Custom implementations of date-fns functions
 const formatTime = (date: Date): string => {
@@ -356,6 +361,10 @@ export default function StylistDayView({
       mobileNumber: appointment.clients?.phone || ''
     });
     
+    // Reset service filters when opening the dialog
+    setSelectedServiceCollection('');
+    setServiceSearchQuery('');
+    
     setEditDialogOpen(true);
   };
   
@@ -410,6 +419,10 @@ export default function StylistDayView({
   const handleEditDialogClose = () => {
     setEditDialogOpen(false);
     setSelectedAppointment(null);
+    
+    // Reset service filters when closing the dialog
+    setSelectedServiceCollection('');
+    setServiceSearchQuery('');
   };
   
   const handleUpdateAppointment = async () => {
@@ -851,6 +864,35 @@ export default function StylistDayView({
     </TimeColumn>
   );
 
+  const { serviceCollections } = useServiceCollections();
+  const [selectedServiceCollection, setSelectedServiceCollection] = useState<string>('');
+  const [serviceSearchQuery, setServiceSearchQuery] = useState<string>('');
+
+  const getFilteredServices = () => {
+    if (!services) return [];
+    
+    let filteredServices = [...services];
+    
+    // Filter by collection if one is selected
+    if (selectedServiceCollection) {
+      const collectionServices = services.filter(service => 
+        service.collection_id === selectedServiceCollection
+      );
+      filteredServices = collectionServices;
+    }
+    
+    // Filter by search query if one is entered
+    if (serviceSearchQuery) {
+      const query = serviceSearchQuery.toLowerCase();
+      filteredServices = filteredServices.filter(service => 
+        service.name.toLowerCase().includes(query) || 
+        (service.description && service.description.toLowerCase().includes(query))
+      );
+    }
+    
+    return filteredServices;
+  };
+
   return (
     <DayViewContainer>
       <DayViewHeader>
@@ -1033,20 +1075,123 @@ export default function StylistDayView({
               />
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth required>
-                <InputLabel>Service</InputLabel>
-                <Select
-                  value={editFormData.serviceId}
-                  onChange={(e) => setEditFormData({ ...editFormData, serviceId: e.target.value as string })}
-                  label="Service"
+              <Typography variant="subtitle1" gutterBottom>
+                Service Selection
+              </Typography>
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth variant="outlined">
+                    <InputLabel id="edit-service-collection-label">Service Collection</InputLabel>
+                    <Select
+                      labelId="edit-service-collection-label"
+                      value={selectedServiceCollection}
+                      onChange={(e) => setSelectedServiceCollection(e.target.value as string)}
+                      label="Service Collection"
+                    >
+                      <MenuItem value="">
+                        <em>All Collections</em>
+                      </MenuItem>
+                      {serviceCollections?.map((collection) => (
+                        <MenuItem key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    placeholder="Search services..."
+                    value={serviceSearchQuery}
+                    onChange={(e) => setServiceSearchQuery(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+              </Grid>
+              
+              {/* Selected Service Display */}
+              {editFormData.serviceId && (
+                <Box 
+                  sx={{ 
+                    mb: 2, 
+                    p: 2, 
+                    border: '1px solid', 
+                    borderColor: 'primary.main', 
+                    borderRadius: 1,
+                    bgcolor: 'primary.light',
+                    color: 'primary.contrastText'
+                  }}
                 >
-                  {services?.map((service) => (
-                    <MenuItem key={service.id} value={service.id}>
-                      {service.name} - {service.duration} min
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    Selected Service:
+                  </Typography>
+                  <Typography>
+                    {services?.find(s => s.id === editFormData.serviceId)?.name} - {' '}
+                    {services?.find(s => s.id === editFormData.serviceId)?.duration} min - {' '}
+                    {formatCurrency(services?.find(s => s.id === editFormData.serviceId)?.price || 0)}
+                  </Typography>
+                </Box>
+              )}
+              
+              {/* Service Cards */}
+              <Box sx={{ maxHeight: '300px', overflow: 'auto', mb: 2 }}>
+                <Grid container spacing={1}>
+                  {getFilteredServices().length > 0 ? (
+                    getFilteredServices().map((service) => (
+                      <Grid item xs={12} sm={6} key={service.id}>
+                        <Paper 
+                          elevation={editFormData.serviceId === service.id ? 3 : 1}
+                          sx={{ 
+                            p: 1.5, 
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            border: editFormData.serviceId === service.id ? '2px solid' : '1px solid',
+                            borderColor: editFormData.serviceId === service.id ? 'primary.main' : 'divider',
+                            bgcolor: editFormData.serviceId === service.id ? 'primary.50' : 'background.paper',
+                            '&:hover': {
+                              bgcolor: 'action.hover',
+                              transform: 'translateY(-2px)',
+                              boxShadow: 2
+                            }
+                          }}
+                          onClick={() => setEditFormData({ ...editFormData, serviceId: service.id })}
+                        >
+                          <Typography variant="subtitle1" fontWeight="medium">
+                            {service.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {service.duration} min
+                            </Typography>
+                            <Typography variant="body1" fontWeight="bold">
+                              {formatCurrency(service.price)}
+                            </Typography>
+                          </Box>
+                          {service.description && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                              {service.description}
+                            </Typography>
+                          )}
+                        </Paper>
+                      </Grid>
+                    ))
+                  ) : (
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        No services found. Try adjusting your search or selecting a different collection.
+                      </Alert>
+                    </Grid>
+                  )}
+                </Grid>
+              </Box>
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth required>
