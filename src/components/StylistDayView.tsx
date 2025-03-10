@@ -643,31 +643,33 @@ export default function StylistDayView({
               })}
             
             {/* Stylist Breaks */}
-            {getStylistBreaks(stylist.id).map((breakItem: StylistBreak) => {
-              const top = getAppointmentPosition(breakItem.startTime);
-              const duration = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
-              
-              return (
-                <BreakCard
-                  key={`break-${breakItem.id}`}
-                  duration={duration}
-                  style={{ top }}
-                >
-                  <Typography variant="caption" fontWeight="bold">
-                    Break Time
-                  </Typography>
-                  {breakItem.reason && (
-                    <Typography variant="caption">
-                      {breakItem.reason}
+            {getStylistBreaks(stylist.id)
+              .sort((a: StylistBreak, b: StylistBreak) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+              .map((breakItem: StylistBreak) => {
+                const top = getAppointmentPosition(breakItem.startTime);
+                const duration = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
+                
+                return (
+                  <BreakCard
+                    key={`break-${breakItem.id}`}
+                    duration={duration}
+                    style={{ top }}
+                  >
+                    <Typography variant="caption" fontWeight="bold">
+                      Break Time
                     </Typography>
-                  )}
-                  <Typography variant="caption">
-                    {formatTime(new Date(breakItem.startTime))} - 
-                    {formatTime(new Date(breakItem.endTime))}
-                  </Typography>
-                </BreakCard>
-              );
-            })}
+                    {breakItem.reason && (
+                      <Typography variant="caption">
+                        {breakItem.reason}
+                      </Typography>
+                    )}
+                    <Typography variant="caption">
+                      {formatTime(new Date(breakItem.startTime))} - 
+                      {formatTime(new Date(breakItem.endTime))}
+                    </Typography>
+                  </BreakCard>
+                );
+              })}
           </StylistColumn>
         ))}
       </ScheduleGrid>
