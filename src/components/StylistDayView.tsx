@@ -18,7 +18,8 @@ import {
   Tooltip,
   SelectChangeEvent,
   Snackbar,
-  Alert
+  Alert,
+  useTheme
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { ChevronLeft, ChevronRight, Today, Receipt } from '@mui/icons-material';
@@ -268,6 +269,7 @@ export default function StylistDayView({
   onUpdateAppointment,
   onDeleteAppointment,
 }: StylistDayViewProps) {
+  const theme = useTheme();
   const [currentDate, setCurrentDate] = useState<Date>(selectedDate || new Date());
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState<boolean>(false);
@@ -774,7 +776,7 @@ export default function StylistDayView({
                     height: heightInPixels,
                     backgroundColor: '#d32f2f', // Solid red color
                     color: '#ffffff',
-                    padding: theme.spacing(0.75, 1),
+                    padding: 1, // Use a simple numeric value instead of theme.spacing
                     overflow: 'hidden',
                     zIndex: 30, // Ensure it's above everything
                     display: 'flex',
