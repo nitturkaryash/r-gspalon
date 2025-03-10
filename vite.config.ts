@@ -37,7 +37,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     // Increase the warning limit to reduce noise
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 1000,
     // Add minify options to better handle initialization order
     minify: 'esbuild',
     // Add esbuild options
@@ -71,12 +71,25 @@ export default defineConfig({
             if (id.includes('chart.js') || id.includes('recharts')) {
               return 'vendor-charts';
             }
+            if (id.includes('@tanstack/react-query')) {
+              return 'vendor-react-query';
+            }
             // All other dependencies
             return 'vendor';
           }
           
           // Split application code by feature
           if (id.includes('/src/components/')) {
+            // Split large components into their own chunks
+            if (id.includes('/components/StylistDayView.tsx')) {
+              return 'component-stylist-day-view';
+            }
+            if (id.includes('/components/Layout')) {
+              return 'component-layout';
+            }
+            if (id.includes('/components/charts/')) {
+              return 'component-charts';
+            }
             return 'components';
           }
           if (id.includes('/src/hooks/')) {
@@ -90,7 +103,17 @@ export default defineConfig({
             if (id.includes('/pages/Appointments.tsx')) {
               return 'page-appointments';
             }
+            if (id.includes('/pages/Dashboard.tsx')) {
+              return 'page-dashboard';
+            }
+            if (id.includes('/pages/Stylists.tsx')) {
+              return 'page-stylists';
+            }
             return 'pages';
+          }
+          // Add a utils chunk
+          if (id.includes('/src/utils/')) {
+            return 'utils';
           }
         }
       }
