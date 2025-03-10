@@ -6,6 +6,7 @@ import { useStylists, Stylist, StylistBreak } from '../hooks/useStylists'
 import StylistDayView from '../components/StylistDayView'
 import { DateSelectArg } from '@fullcalendar/core'
 import { toast } from 'react-toastify'
+import { v4 as uuidv4 } from 'uuid'
 
 interface BookingFormData {
   clientName: string;
@@ -51,7 +52,7 @@ export default function Appointments() {
 
   const { appointments, isLoading: loadingAppointments, updateAppointment, createAppointment, deleteAppointment } = useAppointments()
   const { services, isLoading: loadingServices } = useServices()
-  const { stylists, isLoading: loadingStylists } = useStylists()
+  const { stylists, isLoading: loadingStylists, updateStylist } = useStylists()
 
   const handleSelect = (selectInfo: DateSelectArg) => {
     console.log('Selected slot:', selectInfo);
@@ -248,6 +249,38 @@ export default function Appointments() {
           } catch (error) {
             console.error('Failed to delete appointment:', error);
             toast.error('Failed to delete appointment');
+            throw error;
+          }
+        }}
+        onAddBreak={async (stylistId, breakData) => {
+          try {
+            // Find the stylist
+            const stylist = stylists?.find(s => s.id === stylistId);
+            if (!stylist) {
+              throw new Error('Stylist not found');
+            }
+            
+            // Create a new break with ID
+            const newBreak: StylistBreak = {
+              id: uuidv4(),
+              startTime: breakData.startTime,
+              endTime: breakData.endTime,
+              reason: breakData.reason
+            };
+            
+            // Add the break to the stylist's breaks array
+            const updatedBreaks = [...(stylist.breaks || []), newBreak];
+            
+            // Update the stylist with the new breaks
+            await updateStylist({
+              id: stylistId,
+              breaks: updatedBreaks
+            });
+            
+            toast.success('Break added successfully');
+          } catch (error) {
+            console.error('Failed to add break:', error);
+            toast.error('Failed to add break');
             throw error;
           }
         }}
