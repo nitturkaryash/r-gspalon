@@ -43,8 +43,8 @@ const BUSINESS_HOURS = {
   end: 22,   // 10 PM
 };
 
-// Update the time slot height to match 15-minute intervals
-const TIME_SLOT_HEIGHT = 15; // Height in pixels for one 15-minute slot
+// Update the time slot height to make the calendar more readable
+const TIME_SLOT_HEIGHT = 30; // Increased from 15px to 30px for better visibility
 
 // Styled components
 const DayViewContainer = styled(Paper)(({ theme }) => ({
@@ -76,32 +76,32 @@ const ScheduleGrid = styled(Box)(({ theme }) => ({
 }));
 
 const TimeColumn = styled(Box)(({ theme }) => ({
-  width: 80,
+  width: 100, // Increased from 80px to 100px for better readability
   flexShrink: 0,
   borderRight: `1px solid ${theme.palette.divider}`,
   position: 'sticky',
   left: 0,
-  backgroundColor: theme.palette.background.paper, // White background
+  backgroundColor: theme.palette.background.paper,
   zIndex: 2,
 }));
 
 const StylistColumn = styled(Box)(({ theme }) => ({
   flex: 1,
-  minWidth: 180,
+  minWidth: 200, // Increased from 180px to 200px for better spacing
   borderRight: `1px solid ${theme.palette.divider}`,
   position: 'relative',
-  backgroundColor: theme.palette.salon.offWhite, // Off-white background
+  backgroundColor: theme.palette.salon.offWhite,
 }));
 
 const StylistHeader = styled(Box)(({ theme }) => ({
-  padding: theme.spacing(1),
+  padding: theme.spacing(1.5), // Increased padding for better visibility
   textAlign: 'center',
   borderBottom: `1px solid ${theme.palette.divider}`,
   backgroundColor: theme.palette.salon.oliveLight,
   position: 'sticky',
   top: 0,
   zIndex: 3,
-  height: 48, // Fixed height for the header
+  height: 56, // Increased from 48px to 56px for better visibility
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -112,7 +112,7 @@ const TimeSlot = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
   display: 'flex',
   alignItems: 'center',
-  padding: theme.spacing(0.5),
+  padding: theme.spacing(0.75), // Increased padding for better spacing
   backgroundColor: theme.palette.background.paper,
   position: 'relative',
   '&:last-child': {
@@ -121,13 +121,13 @@ const TimeSlot = styled(Box)(({ theme }) => ({
 }));
 
 const TimeLabel = styled(Typography)(({ theme }) => ({
-  fontSize: '0.75rem',
+  fontSize: '0.85rem', // Increased from 0.75rem for better readability
   color: theme.palette.text.secondary,
   width: '100%',
   textAlign: 'center',
 }));
 
-// First, fix the TimeSlot component to ensure consistent styling
+// Update the AppointmentSlot component
 const AppointmentSlot = styled(Box)(({ theme }) => ({
   height: TIME_SLOT_HEIGHT,
   borderBottom: `1px solid ${theme.palette.divider}`,
@@ -145,28 +145,29 @@ const AppointmentSlot = styled(Box)(({ theme }) => ({
   },
 }));
 
+// Update the AppointmentCard component
 const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
-  left: theme.spacing(0.5),
-  right: theme.spacing(0.5),
-  height: (duration / 30) * TIME_SLOT_HEIGHT, // Convert duration to height
-  backgroundColor: theme.palette.primary.main, // Olive green from theme
-  color: theme.palette.primary.contrastText, // White text for contrast
-  borderRadius: 8, // Less rounded corners to prevent text from being hidden
-  padding: theme.spacing(0.75, 1), // Slightly more padding for text
+  left: theme.spacing(0.75),
+  right: theme.spacing(0.75),
+  height: duration, // Use the calculated height directly
+  backgroundColor: theme.palette.primary.main,
+  color: theme.palette.primary.contrastText,
+  borderRadius: 8,
+  padding: theme.spacing(1, 1.5), // Increased padding for better readability
   overflow: 'hidden',
-  boxShadow: '0px 4px 12px rgba(107, 142, 35, 0.25)', // Enhanced shadow
+  boxShadow: '0px 4px 12px rgba(107, 142, 35, 0.25)',
   zIndex: 1,
-  fontSize: '0.75rem',
+  fontSize: '0.9rem', // Increased from 0.75rem for better readability
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'space-between',
   transition: 'all 0.2s ease-in-out',
-  cursor: 'move', // Cursor indicating it's draggable
-  border: '1px solid rgba(255, 255, 255, 0.25)', // Slightly more visible border
+  cursor: 'move',
+  border: '1px solid rgba(255, 255, 255, 0.25)',
   '&:hover': {
     boxShadow: '0px 6px 16px rgba(107, 142, 35, 0.4)',
-    transform: 'translateY(-2px)', // Removed scale to prevent text clipping
+    transform: 'translateY(-2px)',
   },
 }));
 
@@ -564,7 +565,7 @@ export default function StylistDayView({
     return position;
   };
   
-  // Update the getAppointmentDuration function to work with 15-minute intervals
+  // Update the getAppointmentDuration function to work with the new time slot height
   const getAppointmentDuration = (startTime: string, endTime: string) => {
     // Use normalized dates to ensure consistent time interpretation
     const start = normalizeDateTime(startTime);
@@ -576,7 +577,7 @@ export default function StylistDayView({
     // Calculate number of 15-minute intervals (round up to ensure coverage)
     const intervals = Math.ceil(durationInMinutes / 15);
     
-    // Convert to pixels based on TIME_SLOT_HEIGHT
+    // Convert to pixels based on TIME_SLOT_HEIGHT (30px per 15-minute interval)
     const height = intervals * TIME_SLOT_HEIGHT;
     
     console.log('Duration calculation:', {
@@ -809,11 +810,11 @@ export default function StylistDayView({
 
   const BreakBlock = styled(Box)(({ theme }) => ({
     position: 'absolute',
-    left: theme.spacing(0.5),
-    right: theme.spacing(0.5),
+    left: theme.spacing(0.75),
+    right: theme.spacing(0.75),
     backgroundColor: theme.palette.error.main,
     color: theme.palette.error.contrastText,
-    padding: theme.spacing(0.5),
+    padding: theme.spacing(1),
     zIndex: 10,
     borderRadius: theme.shape.borderRadius,
     borderLeft: `4px solid ${theme.palette.error.dark}`,
@@ -828,17 +829,19 @@ export default function StylistDayView({
   const renderTimeColumn = () => (
     <TimeColumn>
       <StylistHeader>
-        <TimeLabel variant="subtitle2">Time</TimeLabel>
+        <TimeLabel variant="subtitle2" sx={{ fontSize: '1rem', fontWeight: 'medium' }}>
+          Time
+        </TimeLabel>
       </StylistHeader>
       {timeSlots.map(({ hour, minute }) => (
         <TimeSlot key={`time-${hour}-${minute}`}>
           {/* Only show the hour label for the first slot of each hour */}
           {minute === 0 ? (
-            <TimeLabel>
+            <TimeLabel sx={{ fontWeight: 'medium' }}>
               {format(new Date().setHours(hour, minute), 'h:mm a')}
             </TimeLabel>
           ) : (
-            <TimeLabel sx={{ fontSize: '0.65rem', opacity: 0.7 }}>
+            <TimeLabel sx={{ fontSize: '0.75rem', opacity: 0.8 }}>
               {format(new Date().setHours(hour, minute), 'h:mm a')}
             </TimeLabel>
           )}
