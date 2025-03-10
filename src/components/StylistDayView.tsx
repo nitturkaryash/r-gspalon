@@ -569,7 +569,7 @@ export default function StylistDayView({
     setSnackbarOpen(false);
   };
 
-  // Check if a time slot conflicts with any stylist break
+  // Fix the isBreakTime function to correctly detect breaks with 15-minute precision
   const isBreakTime = (stylistId: string, hour: number, minute: number) => {
     const stylist = stylists.find(s => s.id === stylistId);
     if (!stylist || !stylist.breaks || stylist.breaks.length === 0) {
@@ -582,7 +582,7 @@ export default function StylistDayView({
       slotTime.setHours(hour, minute, 0, 0);
       const slotTimeValue = slotTime.getTime();
       
-      // Create a date object for the end of the slot (now 15 minutes)
+      // Create a date object for the end of the slot (15 minutes)
       const slotEndTime = new Date(currentDate);
       slotEndTime.setHours(hour, minute + 15, 0, 0); // Add 15 minutes for the end of the slot
       const slotEndTimeValue = slotEndTime.getTime();
@@ -600,12 +600,14 @@ export default function StylistDayView({
           const breakEnd = new Date(breakItem.endTime).getTime();
           
           // Debug log to help identify issues
-          if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
+          if (hour === 1 || hour === 2) {
             console.log('Break time check:', {
-              slotTime: slotTime.toISOString(),
-              slotEndTime: slotEndTime.toISOString(),
-              breakStart: new Date(breakItem.startTime).toISOString(),
-              breakEnd: new Date(breakItem.endTime).toISOString(),
+              hour,
+              minute,
+              slotTime: slotTime.toLocaleTimeString(),
+              slotEndTime: slotEndTime.toLocaleTimeString(),
+              breakStart: new Date(breakItem.startTime).toLocaleTimeString(),
+              breakEnd: new Date(breakItem.endTime).toLocaleTimeString(),
               isOverlapping: (
                 // Check if the slot starts during a break
                 (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
@@ -692,11 +694,11 @@ export default function StylistDayView({
                 onDragOver={(e) => handleDragOver(e, stylist.id, slot.hour, slot.minute)}
                 onDrop={(e) => handleDrop(e, stylist.id, slot.hour, slot.minute)}
                 sx={isBreakTime(stylist.id, slot.hour, slot.minute) ? { 
-                  backgroundColor: 'rgba(211, 47, 47, 0.1)', // Very light red background
+                  backgroundColor: 'transparent', // Completely transparent
                   cursor: 'not-allowed',
                   pointerEvents: 'none', // Prevent mouse events
                   '&:hover': {
-                    backgroundColor: 'rgba(211, 47, 47, 0.1)' // No hover effect
+                    backgroundColor: 'transparent' // No hover effect
                   }
                 } : undefined}
               />
@@ -751,6 +753,7 @@ export default function StylistDayView({
               // Calculate the height precisely based on 15-minute intervals
               const heightInPixels = (duration / 15) * (TIME_SLOT_HEIGHT / 4);
               
+              // Debug logging to help diagnose positioning issues
               console.log('Break rendering:', {
                 breakId: breakItem.id,
                 startTime: breakStart.toLocaleTimeString(),
@@ -761,13 +764,22 @@ export default function StylistDayView({
               });
               
               return (
-                <BreakCard
+                <Box
                   key={`break-${breakItem.id}`}
-                  duration={duration}
-                  style={{ 
+                  sx={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
                     top: top,
                     height: heightInPixels,
-                    zIndex: 30 // Ensure it's above everything
+                    backgroundColor: '#d32f2f', // Solid red color
+                    color: '#ffffff',
+                    padding: theme.spacing(0.75, 1),
+                    overflow: 'hidden',
+                    zIndex: 30, // Ensure it's above everything
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
                   }}
                 >
                   <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
@@ -781,7 +793,7 @@ export default function StylistDayView({
                   <Typography variant="caption" sx={{ color: 'white' }}>
                     {formatTime(breakStart)} - {formatTime(breakEnd)}
                   </Typography>
-                </BreakCard>
+                </Box>
               );
             })}
           </StylistColumn>
