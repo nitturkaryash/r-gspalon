@@ -155,25 +155,26 @@ const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) 
 
 const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
-  left: theme.spacing(0.5),
-  right: theme.spacing(0.5),
+  left: 0, // Cover the entire width
+  right: 0,
   height: (duration / 30) * (TIME_SLOT_HEIGHT / 2), // Convert duration to height
-  backgroundColor: theme.palette.error.light, // Light red for breaks
+  backgroundColor: 'rgba(211, 47, 47, 0.85)', // More opaque red for better visibility
   color: theme.palette.error.contrastText, 
-  borderRadius: 8,
+  borderRadius: 0, // Remove border radius to ensure full coverage
   padding: theme.spacing(0.75, 1),
   overflow: 'hidden',
-  boxShadow: '0px 4px 12px rgba(211, 47, 47, 0.25)',
-  zIndex: 1,
+  boxShadow: '0px 4px 12px rgba(211, 47, 47, 0.4)', // Stronger shadow
+  zIndex: 10, // Higher z-index to ensure it's above other elements
   fontSize: '0.75rem',
   display: 'flex',
   flexDirection: 'column',
-  justifyContent: 'space-between',
+  justifyContent: 'center', // Center content vertically
   transition: 'all 0.2s ease-in-out',
-  border: '1px solid rgba(255, 255, 255, 0.25)',
-  cursor: 'default', // Not draggable
+  border: '2px solid rgba(211, 47, 47, 0.9)', // More visible border
+  cursor: 'not-allowed', // Indicate that this area is not available
+  pointerEvents: 'auto', // Ensure it captures mouse events
   '&:hover': {
-    boxShadow: '0px 6px 16px rgba(211, 47, 47, 0.4)',
+    boxShadow: '0px 6px 16px rgba(211, 47, 47, 0.6)',
   },
 }));
 
@@ -511,13 +512,18 @@ export default function StylistDayView({
       slotTime.setHours(hour, minute, 0, 0);
       const slotTimeValue = slotTime.getTime();
       
+      // Create a date object for the end of the slot
+      const slotEndTime = new Date(currentDate);
+      slotEndTime.setHours(hour, minute + 30, 0, 0); // Add 30 minutes for the end of the slot
+      const slotEndTimeValue = slotEndTime.getTime();
+      
       // Get only breaks for the current day to improve performance
       const todayBreaks = stylist.breaks.filter((breakItem: StylistBreak) => {
         const breakDate = new Date(breakItem.startTime);
         return isSameDay(breakDate, currentDate);
       });
       
-      // Check if the slot time is within any break period
+      // Check if the slot time overlaps with any break period
       return todayBreaks.some((breakItem: StylistBreak) => {
         try {
           const breakStart = new Date(breakItem.startTime).getTime();
@@ -527,13 +533,29 @@ export default function StylistDayView({
           if (process.env.NODE_ENV === 'development' && hour === 12 && minute === 0) {
             console.log('Break time check:', {
               slotTime: slotTime.toISOString(),
+              slotEndTime: slotEndTime.toISOString(),
               breakStart: new Date(breakItem.startTime).toISOString(),
               breakEnd: new Date(breakItem.endTime).toISOString(),
-              isWithinBreak: (slotTimeValue >= breakStart && slotTimeValue < breakEnd)
+              isOverlapping: (
+                // Check if the slot starts during a break
+                (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
+                // Check if the slot ends during a break
+                (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
+                // Check if the slot completely contains a break
+                (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
+              )
             });
           }
           
-          return slotTimeValue >= breakStart && slotTimeValue < breakEnd;
+          // Check for any overlap between the slot and the break
+          return (
+            // Check if the slot starts during a break
+            (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
+            // Check if the slot ends during a break
+            (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
+            // Check if the slot completely contains a break
+            (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
+          );
         } catch (error) {
           console.error('Error checking break time:', error, breakItem);
           return false;
@@ -639,10 +661,10 @@ export default function StylistDayView({
                 onDragOver={(e) => handleDragOver(e, stylist.id, slot.hour, slot.minute)}
                 onDrop={(e) => handleDrop(e, stylist.id, slot.hour, slot.minute)}
                 sx={isBreakTime(stylist.id, slot.hour, slot.minute) ? { 
-                  backgroundColor: 'rgba(211, 47, 47, 0.1)', 
+                  backgroundColor: 'rgba(211, 47, 47, 0.15)', 
                   cursor: 'not-allowed',
                   '&:hover': {
-                    backgroundColor: 'rgba(211, 47, 47, 0.15)'
+                    backgroundColor: 'rgba(211, 47, 47, 0.2)'
                   }
                 } : undefined}
               />
@@ -689,21 +711,29 @@ export default function StylistDayView({
               const top = getAppointmentPosition(breakItem.startTime);
               const duration = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
               
+              // Ensure the break covers at least one full slot
+              const adjustedDuration = Math.max(duration, 30);
+              
               return (
                 <BreakCard
                   key={`break-${breakItem.id}`}
-                  duration={duration}
-                  style={{ top }}
+                  duration={adjustedDuration}
+                  style={{ 
+                    top,
+                    // Add a small negative margin to ensure it fully covers the slots
+                    marginTop: -1,
+                    height: (adjustedDuration / 30) * (TIME_SLOT_HEIGHT / 2) + 2 // Add 2px to cover borders
+                  }}
                 >
-                  <Typography variant="caption" fontWeight="bold">
+                  <Typography variant="caption" fontWeight="bold" sx={{ color: 'white' }}>
                     Break Time
                   </Typography>
                   {breakItem.reason && (
-                    <Typography variant="caption">
+                    <Typography variant="caption" sx={{ color: 'white' }}>
                       {breakItem.reason}
                     </Typography>
                   )}
-                  <Typography variant="caption">
+                  <Typography variant="caption" sx={{ color: 'white' }}>
                     {formatTime(new Date(breakItem.startTime))} - 
                     {formatTime(new Date(breakItem.endTime))}
                   </Typography>
