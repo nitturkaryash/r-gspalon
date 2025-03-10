@@ -154,48 +154,52 @@ export default function Stylists() {
 
   const handleAddBreak = () => {
     if (!breakDate || !breakStartTime || !breakEndTime) {
-      toast.error('Date and time are required')
-      return
+      toast.error('Please select date and time for the break');
+      return;
     }
-    
-    // Combine date and time
-    const startDateTime = new Date(breakDate)
+
+    // Create a new Date object for the break date to ensure we're not modifying the original
+    const breakDateClone = new Date(
+      breakDate.getFullYear(),
+      breakDate.getMonth(),
+      breakDate.getDate()
+    );
+
+    // Create start date by properly cloning the date first
+    const startDateTime = new Date(breakDateClone);
     startDateTime.setHours(
       breakStartTime.getHours(),
       breakStartTime.getMinutes(),
-      0, 0
-    )
-    
-    const endDateTime = new Date(breakDate)
+      0,
+      0
+    );
+
+    // Create end date by properly cloning the date first
+    const endDateTime = new Date(breakDateClone);
     endDateTime.setHours(
       breakEndTime.getHours(),
       breakEndTime.getMinutes(),
-      0, 0
-    )
-    
-    // Validate end time is after start time
-    if (endDateTime <= startDateTime) {
-      toast.error('End time must be after start time')
-      return
-    }
-    
+      0,
+      0
+    );
+
     // Create new break
     const newBreak: StylistBreak = {
       id: uuidv4(),
       startTime: startDateTime.toISOString(),
       endTime: endDateTime.toISOString(),
       reason: breakReason
-    }
-    
-    // Add to form data
+    };
+
+    // Update form data with the new break
     setFormData({
       ...formData,
       breaks: [...(formData.breaks || []), newBreak]
-    })
-    
-    handleCloseBreakDialog()
-    toast.success('Break scheduled')
-  }
+    });
+
+    handleCloseBreakDialog();
+    toast.success('Break scheduled');
+  };
 
   const handleDeleteBreak = (breakId: string) => {
     setFormData({
@@ -207,9 +211,16 @@ export default function Stylists() {
 
   // Format date and time for display
   const formatBreakTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return format(date, 'MMM dd, yyyy hh:mm a')
-  }
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this stylist?')) {

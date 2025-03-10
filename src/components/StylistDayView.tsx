@@ -527,11 +527,7 @@ export default function StylistDayView({
     // Filter breaks for the current day
     return stylist.breaks.filter((breakItem: StylistBreak) => {
       const breakDate = new Date(breakItem.startTime);
-      return (
-        breakDate.getFullYear() === currentDate.getFullYear() &&
-        breakDate.getMonth() === currentDate.getMonth() &&
-        breakDate.getDate() === currentDate.getDate()
-      );
+      return isSameDay(breakDate, currentDate);
     });
   };
 
