@@ -623,10 +623,14 @@ export default function StylistDayView({
           serviceId: selectedAppointment.service_id,
           serviceName: service?.name || '',
           servicePrice: service?.price || 0,
-          appointmentTime: selectedAppointment.start_time
+          appointmentTime: selectedAppointment.start_time,
+          type: 'service' // Explicitly set type as service
         }
       }
     });
+    
+    // Close the edit dialog
+    handleEditDialogClose();
   };
 
   // Get stylist breaks for the current day
