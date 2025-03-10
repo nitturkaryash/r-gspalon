@@ -284,6 +284,9 @@ export default function Appointments() {
             throw error;
           }
         }}
+        onDateChange={(date) => {
+          setSelectedDate(date);
+        }}
       />
 
       {/* Booking Dialog */}

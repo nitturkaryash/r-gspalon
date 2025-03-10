@@ -20,10 +20,11 @@ import {
   Snackbar,
   Alert,
   useTheme,
-  InputAdornment
+  InputAdornment,
+  Popover
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { ChevronLeft, ChevronRight, Today, Receipt } from '@mui/icons-material';
+import { ChevronLeft, ChevronRight, Today, Receipt, CalendarMonth } from '@mui/icons-material';
 import { format, addDays, isSameDay } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useClients } from '../hooks/useClients';
@@ -32,6 +33,9 @@ import { useServiceCollections } from '../hooks/useServiceCollections';
 import { useCollectionServices } from '../hooks/useCollectionServices';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { formatCurrency } from '../utils/format';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
 // Custom implementations of date-fns functions
 const formatTime = (date: Date): string => {
@@ -49,7 +53,7 @@ const BUSINESS_HOURS = {
 };
 
 // Update the time slot height to make the calendar more readable
-const TIME_SLOT_HEIGHT = 30; // Increased from 15px to 30px for better visibility
+const TIME_SLOT_HEIGHT = 30; // Height in pixels for each 15-minute slot
 
 // Styled components
 const DayViewContainer = styled(Paper)(({ theme }) => ({
@@ -117,7 +121,7 @@ const TimeSlot = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
   display: 'flex',
   alignItems: 'center',
-  padding: theme.spacing(0.75), // Increased padding for better spacing
+  padding: theme.spacing(0.75),
   backgroundColor: theme.palette.background.paper,
   position: 'relative',
   '&:last-child': {
@@ -155,15 +159,15 @@ const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) 
   position: 'absolute',
   left: theme.spacing(0.75),
   right: theme.spacing(0.75),
-  height: duration, // Use the calculated height directly
+  height: `${duration}px`, // Explicitly set height in pixels
   backgroundColor: theme.palette.primary.main,
   color: theme.palette.primary.contrastText,
   borderRadius: 8,
-  padding: theme.spacing(1, 1.5), // Increased padding for better readability
+  padding: theme.spacing(1, 1.5),
   overflow: 'hidden',
   boxShadow: '0px 4px 12px rgba(107, 142, 35, 0.25)',
   zIndex: 1,
-  fontSize: '0.9rem', // Increased from 0.75rem for better readability
+  fontSize: '0.9rem',
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'space-between',
@@ -202,7 +206,7 @@ const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   },
 }));
 
-// Update the generateTimeSlots function to create 15-minute intervals
+// Update the generateTimeSlots function to create precise 15-minute intervals
 const generateTimeSlots = () => {
   const slots = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
@@ -263,6 +267,7 @@ interface StylistDayViewProps {
   onUpdateAppointment?: (appointmentId: string, updates: any) => Promise<void>;
   onDeleteAppointment?: (appointmentId: string) => Promise<void>;
   onAddBreak?: (stylistId: string, breakData: { startTime: string; endTime: string; reason?: string }) => Promise<void>;
+  onDateChange?: (date: Date) => void;
 }
 
 export default function StylistDayView({
@@ -274,6 +279,7 @@ export default function StylistDayView({
   onUpdateAppointment,
   onDeleteAppointment,
   onAddBreak,
+  onDateChange,
 }: StylistDayViewProps) {
   const theme = useTheme();
   const [currentDate, setCurrentDate] = useState<Date>(selectedDate || new Date());
@@ -287,10 +293,11 @@ export default function StylistDayView({
     endTime: '',
     reason: ''
   });
-  // Add back the editFormData state
+  // Update the editFormData state type
   const [editFormData, setEditFormData] = useState({
     clientName: '',
     serviceId: '',
+    stylistId: '', // Add this field
     startTime: '',
     endTime: '',
     notes: '',
@@ -299,33 +306,59 @@ export default function StylistDayView({
   // State for drag and drop
   const [draggedAppointment, setDraggedAppointment] = useState<any | null>(null);
   
+  // Add state for date picker popover
+  const [datePickerAnchorEl, setDatePickerAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const datePickerOpen = Boolean(datePickerAnchorEl);
+  
   const timeSlots = generateTimeSlots();
   const timeOptions = generateTimeOptions();
   
   const handlePrevDay = () => {
-    setCurrentDate(prev => addDays(prev, -1));
+    const newDate = addDays(currentDate, -1);
+    setCurrentDate(newDate);
+    // Notify parent component if callback is provided
+    if (onDateChange) {
+      onDateChange(newDate);
+    }
   };
   
   const handleNextDay = () => {
-    setCurrentDate(prev => addDays(prev, 1));
+    const newDate = addDays(currentDate, 1);
+    setCurrentDate(newDate);
+    // Notify parent component if callback is provided
+    if (onDateChange) {
+      onDateChange(newDate);
+    }
   };
   
   const handleToday = () => {
-    setCurrentDate(new Date());
+    const today = new Date();
+    setCurrentDate(today);
+    // Notify parent component if callback is provided
+    if (onDateChange) {
+      onDateChange(today);
+    }
   };
   
   const handleSlotClick = (stylistId: string, hour: number, minute: number) => {
-    // Check if this time is during a break
+    // Check if this time slot is during a break
     if (isBreakTime(stylistId, hour, minute)) {
-      // Instead of using toast directly, set a state variable for snackbar
-      setSnackbarMessage("Cannot schedule during stylist's break time");
-      setSnackbarOpen(true);
-      return;
+      return; // Don't allow booking during breaks
     }
     
-    const time = new Date(currentDate);
-    time.setHours(hour, minute, 0, 0);
-    onSelectTimeSlot(stylistId, time);
+    // Create a new date object for the selected time with exact minutes
+    const selectedTime = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+      hour,
+      minute,
+      0,
+      0
+    );
+    
+    // Call the onSelectTimeSlot callback with the stylist ID and formatted time
+    onSelectTimeSlot(stylistId, selectedTime);
   };
 
   const { clients, updateClient } = useClients();
@@ -337,33 +370,16 @@ export default function StylistDayView({
     const startDate = new Date(appointment.start_time);
     const endDate = new Date(appointment.end_time);
     
-    // Ensure we have the client_id for this appointment
-    let clientId = appointment.client_id;
-    
-    // If no client_id but we have a client name, try to find the client by name
-    if (!clientId && appointment.clients?.full_name && clients) {
-      const client = clients.find(c => 
-        c.full_name.toLowerCase() === appointment.clients.full_name.toLowerCase()
-      );
-      if (client) {
-        clientId = client.id;
-        // Update the appointment with the client ID for future reference
-        appointment.client_id = clientId;
-      }
-    }
-    
+    // Update form data with all fields including stylistId
     setEditFormData({
       clientName: appointment.clients?.full_name || '',
       serviceId: appointment.service_id || '',
-      startTime: `${startDate.getHours()}:${startDate.getMinutes() === 0 ? '00' : '30'}`,
-      endTime: `${endDate.getHours()}:${endDate.getMinutes() === 0 ? '00' : '30'}`,
+      stylistId: appointment.stylist_id || '',
+      startTime: `${startDate.getHours()}:${startDate.getMinutes() === 0 ? '00' : startDate.getMinutes().toString().padStart(2, '0')}`,
+      endTime: `${endDate.getHours()}:${endDate.getMinutes() === 0 ? '00' : endDate.getMinutes().toString().padStart(2, '0')}`,
       notes: appointment.notes || '',
       mobileNumber: appointment.clients?.phone || ''
     });
-    
-    // Reset service filters when opening the dialog
-    setSelectedServiceCollection('');
-    setServiceSearchQuery('');
     
     setEditDialogOpen(true);
   };
@@ -385,34 +401,48 @@ export default function StylistDayView({
   const handleDrop = async (e: React.DragEvent, stylistId: string, hour: number, minute: number) => {
     e.preventDefault();
     
-    // Ensure we have a dragged appointment and update function
-    if (!draggedAppointment || !onUpdateAppointment) return;
+    // Check if this time slot is during a break
+    if (isBreakTime(stylistId, hour, minute)) {
+      setSnackbarMessage('Cannot move appointment to a break time');
+      setSnackbarOpen(true);
+      return;
+    }
     
-    try {
-      // Create the new time for the appointment
-      const startTime = new Date(currentDate);
-      startTime.setHours(hour, minute, 0, 0);
+    if (draggedAppointment && onUpdateAppointment) {
+      // Create a new date object for the drop target time with exact minutes
+      const dropTime = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        currentDate.getDate(),
+        hour,
+        minute,
+        0,
+        0
+      );
       
-      // Calculate the appointment duration in milliseconds
-      const originalStartTime = new Date(draggedAppointment.start_time);
-      const originalEndTime = new Date(draggedAppointment.end_time);
-      const durationMs = originalEndTime.getTime() - originalStartTime.getTime();
+      // Calculate the original duration in minutes
+      const originalStart = new Date(draggedAppointment.start_time);
+      const originalEnd = new Date(draggedAppointment.end_time);
+      const durationMinutes = (originalEnd.getTime() - originalStart.getTime()) / (1000 * 60);
       
       // Calculate the new end time by adding the same duration
-      const endTime = new Date(startTime.getTime() + durationMs);
+      const newEndTime = new Date(dropTime.getTime() + durationMinutes * 60 * 1000);
       
-      // Update the appointment
-      await onUpdateAppointment(draggedAppointment.id, {
-        stylist_id: stylistId, // Allow changing stylist
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString()
-      });
-      
-      // Reset drag state
-      setDraggedAppointment(null);
-    } catch (error) {
-      console.error('Failed to update appointment during drag', error);
-      setDraggedAppointment(null);
+      try {
+        await onUpdateAppointment(draggedAppointment.id, {
+          ...draggedAppointment,
+          stylist_id: stylistId,
+          start_time: dropTime.toISOString(),
+          end_time: newEndTime.toISOString(),
+        });
+        
+        // Clear the dragged appointment reference
+        setDraggedAppointment(null);
+      } catch (error) {
+        console.error('Error updating appointment:', error);
+        setSnackbarMessage('Failed to move appointment');
+        setSnackbarOpen(true);
+      }
     }
   };
   
@@ -428,54 +458,98 @@ export default function StylistDayView({
   const handleUpdateAppointment = async () => {
     if (!selectedAppointment || !onUpdateAppointment) return;
     
-    // Parse the selected times
-    const [startHour, startMinute] = editFormData.startTime.split(':').map(Number);
-    const [endHour, endMinute] = editFormData.endTime.split(':').map(Number);
-    
-    // Create Date objects for the start and end times
-    const startTime = new Date(currentDate);
-    startTime.setHours(startHour, startMinute, 0, 0);
-    
-    const endTime = new Date(currentDate);
-    endTime.setHours(endHour, endMinute, 0, 0);
-    
-    // Ensure end time is after start time
-    if (endTime <= startTime) {
-      alert('End time must be after start time');
-      return;
-    }
-    
     try {
-      // Update the appointment
-      await onUpdateAppointment(selectedAppointment.id, {
-        client_name: editFormData.clientName,
-        service_id: editFormData.serviceId,
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString(),
-        notes: editFormData.notes,
-        phone: editFormData.mobileNumber
-      });
+      // Parse the time strings from the form data
+      const [startHour, startMinute] = editFormData.startTime.split(':').map(Number);
+      const [endHour, endMinute] = editFormData.endTime.split(':').map(Number);
       
-      // If we have a client ID and a mobile number, update the client record
-      if (selectedAppointment.client_id && editFormData.mobileNumber) {
-        // Update the client record with the new phone number
-        await updateClient({
-          id: selectedAppointment.client_id,
-          phone: editFormData.mobileNumber
-        });
-        
-        // Also update the clients reference in the current appointment for immediate display
-        selectedAppointment.clients = {
-          ...selectedAppointment.clients,
-          phone: editFormData.mobileNumber
-        };
+      // Create Date objects with the current date and selected times
+      const startTime = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        currentDate.getDate(),
+        startHour,
+        startMinute,
+        0,
+        0
+      );
+      
+      const endTime = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        currentDate.getDate(),
+        endHour,
+        endMinute,
+        0,
+        0
+      );
+      
+      // If end time is earlier than start time, assume it's the next day
+      if (endTime < startTime) {
+        endTime.setDate(endTime.getDate() + 1);
       }
       
-      handleEditDialogClose();
+      // Format as ISO strings for consistent storage
+      const formattedStartTime = startTime.toISOString();
+      const formattedEndTime = endTime.toISOString();
+      
+      // Check if this appointment would conflict with a break
+      if (checkBreakConflict(editFormData.stylistId, formattedStartTime, formattedEndTime)) {
+        setSnackbarMessage("This appointment conflicts with a stylist's break");
+        setSnackbarOpen(true);
+        return;
+      }
+      
+      // Update the appointment with the new data
+      await onUpdateAppointment(selectedAppointment.id, {
+        ...selectedAppointment,
+        stylist_id: editFormData.stylistId,
+        service_id: editFormData.serviceId,
+        start_time: formattedStartTime,
+        end_time: formattedEndTime,
+        notes: editFormData.notes,
+        // Include client information if available
+        client_id: selectedAppointment.client_id,
+        clients: selectedAppointment.clients
+      });
+      
+      // Close the dialog and reset state
+      setEditDialogOpen(false);
+      setSelectedAppointment(null);
+      setEditFormData({
+        clientName: '',
+        serviceId: '',
+        stylistId: '',
+        startTime: '',
+        endTime: '',
+        notes: '',
+        mobileNumber: ''
+      });
     } catch (error) {
-      console.error('Failed to update appointment:', error);
-      alert('Failed to update appointment');
+      console.error('Error updating appointment:', error);
+      setSnackbarMessage('Failed to update appointment');
+      setSnackbarOpen(true);
     }
+  };
+  
+  // Add a helper function to check if an appointment conflicts with breaks
+  const checkBreakConflict = (stylistId: string, startTime: string, endTime: string): boolean => {
+    const breaks = getStylistBreaks(stylistId);
+    if (!breaks || breaks.length === 0) return false;
+    
+    const appointmentStart = new Date(startTime).getTime();
+    const appointmentEnd = new Date(endTime).getTime();
+    
+    return breaks.some((breakItem: StylistBreak) => {
+      const breakStart = new Date(breakItem.startTime).getTime();
+      const breakEnd = new Date(breakItem.endTime).getTime();
+      
+      return (
+        (appointmentStart >= breakStart && appointmentStart < breakEnd) || // Appointment starts during break
+        (appointmentEnd > breakStart && appointmentEnd <= breakEnd) || // Appointment ends during break
+        (appointmentStart <= breakStart && appointmentEnd >= breakEnd) // Break is within appointment
+      );
+    });
   };
   
   const handleDeleteAppointment = async () => {
@@ -493,9 +567,64 @@ export default function StylistDayView({
   };
   
   const handleTimeChange = (event: SelectChangeEvent, field: 'startTime' | 'endTime') => {
-    setEditFormData({
-      ...editFormData,
-      [field]: event.target.value
+    if (!selectedAppointment) return;
+    
+    // Get the selected time value (format: "hour:minute")
+    const timeValue = event.target.value;
+    const [hourStr, minuteStr] = timeValue.split(':');
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minuteStr, 10);
+    
+    // Create a new date object with the selected time
+    const newTime = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth(),
+      currentDate.getDate(),
+      hour,
+      minute,
+      0,
+      0
+    );
+    
+    // Update the appropriate field in the editFormData state
+    setEditFormData(prev => {
+      if (!prev) return prev;
+      
+      // Create a copy of the previous state
+      const updated = { ...prev };
+      
+      // Update the appropriate field
+      if (field === 'startTime') {
+        updated.startTime = timeValue;
+        
+        // If the new start time is after the end time, adjust the end time
+        const [endHourStr, endMinuteStr] = updated.endTime.split(':');
+        const endHour = parseInt(endHourStr, 10);
+        const endMinute = parseInt(endMinuteStr, 10);
+        
+        if (hour > endHour || (hour === endHour && minute >= endMinute)) {
+          // Set end time to start time + 15 minutes
+          const newEndHour = minute >= 45 ? (hour + 1) % 24 : hour;
+          const newEndMinute = (minute + 15) % 60;
+          updated.endTime = `${newEndHour}:${newEndMinute.toString().padStart(2, '0')}`;
+        }
+      } else {
+        updated.endTime = timeValue;
+        
+        // If the new end time is before the start time, adjust the start time
+        const [startHourStr, startMinuteStr] = updated.startTime.split(':');
+        const startHour = parseInt(startHourStr, 10);
+        const startMinute = parseInt(startMinuteStr, 10);
+        
+        if (hour < startHour || (hour === startHour && minute <= startMinute)) {
+          // Set start time to end time - 15 minutes
+          const newStartMinute = minute < 15 ? 45 : minute - 15;
+          const newStartHour = minute < 15 ? (hour === 0 ? 23 : hour - 1) : hour;
+          updated.startTime = `${newStartHour}:${newStartMinute.toString().padStart(2, '0')}`;
+        }
+      }
+      
+      return updated;
     });
   };
   
@@ -510,15 +639,7 @@ export default function StylistDayView({
     // Parse the input date string
     const dateTime = new Date(dateTimeString);
     
-    // Log the original date for debugging
-    console.log('Normalizing date:', {
-      original: dateTimeString,
-      parsed: dateTime.toLocaleString(),
-      hours: dateTime.getHours(),
-      minutes: dateTime.getMinutes()
-    });
-    
-    // Explicitly preserve the time components while normalizing to the current date
+    // Create a new date object with the current date but time from the appointment
     const normalized = new Date(
       currentDate.getFullYear(),
       currentDate.getMonth(),
@@ -529,52 +650,24 @@ export default function StylistDayView({
       0
     );
     
-    // Log the normalized date for debugging
-    console.log('Normalized date:', {
-      result: normalized.toLocaleString(),
-      hours: normalized.getHours(),
-      minutes: normalized.getMinutes()
-    });
-    
     return normalized;
   };
 
-  // Update the getAppointmentPosition function to correctly calculate positions
+  // Update the getAppointmentPosition function to ensure precise positioning
   const getAppointmentPosition = (startTime: string) => {
     // Use the normalized date to ensure consistent time interpretation
     const time = normalizeDateTime(startTime);
     
-    // Log for debugging the time being processed
-    console.log('Calculating position for:', {
-      timeString: startTime,
-      normalizedTime: time.toLocaleTimeString(),
-      hours: time.getHours(),
-      minutes: time.getMinutes()
-    });
-    
-    // Calculate position based on business hours and 15-minute intervals
+    // Calculate position based on business hours and exact minutes
     const hoursSinceStart = time.getHours() - BUSINESS_HOURS.start;
     const minutesSinceHourStart = time.getMinutes();
     
-    // Calculate total minutes since the start of business hours
-    const totalMinutesSinceStart = (hoursSinceStart * 60) + minutesSinceHourStart;
+    // Calculate total minutes since the start of business hours and add 30 minutes
+    const totalMinutesSinceStart = (hoursSinceStart * 60) + minutesSinceHourStart + 30;
     
-    // Calculate total 15-minute intervals since the start of business hours
-    // Ensure we're using exact intervals without any rounding issues
-    const totalIntervals = Math.round(totalMinutesSinceStart / 15);
-    
-    // Calculate position in pixels (each interval is TIME_SLOT_HEIGHT pixels)
-    const position = totalIntervals * TIME_SLOT_HEIGHT;
-    
-    console.log('Position calculation:', {
-      hour: time.getHours(),
-      businessStart: BUSINESS_HOURS.start,
-      hourDiff: hoursSinceStart,
-      minute: minutesSinceHourStart,
-      totalMinutesSinceStart,
-      totalIntervals,
-      position
-    });
+    // Calculate position in pixels based on exact minutes
+    // This ensures appointments are positioned exactly at their scheduled time
+    const position = (totalMinutesSinceStart / 15) * TIME_SLOT_HEIGHT;
     
     return position;
   };
@@ -588,19 +681,9 @@ export default function StylistDayView({
     // Calculate duration in minutes
     const durationInMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
     
-    // Calculate number of 15-minute intervals (round up to ensure coverage)
-    const intervals = Math.ceil(durationInMinutes / 15);
-    
-    // Convert to pixels based on TIME_SLOT_HEIGHT (30px per 15-minute interval)
-    const height = intervals * TIME_SLOT_HEIGHT;
-    
-    console.log('Duration calculation:', {
-      startTime: start.toLocaleTimeString(),
-      endTime: end.toLocaleTimeString(),
-      durationInMinutes,
-      intervals,
-      height
-    });
+    // Calculate height in pixels based on exact minutes (not intervals)
+    // This ensures appointments have the exact height for their duration
+    const height = (durationInMinutes / 15) * TIME_SLOT_HEIGHT;
     
     return height;
   };
@@ -906,6 +989,28 @@ export default function StylistDayView({
     return filteredServices;
   };
 
+  // Add handler for date picker icon click
+  const handleDatePickerClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setDatePickerAnchorEl(event.currentTarget);
+  };
+  
+  // Add handler for date picker close
+  const handleDatePickerClose = () => {
+    setDatePickerAnchorEl(null);
+  };
+  
+  // Update the handleDateChange function
+  const handleDateChange = (date: Date | null) => {
+    if (date) {
+      setCurrentDate(date);
+      // Notify parent component if callback is provided
+      if (onDateChange) {
+        onDateChange(date);
+      }
+      handleDatePickerClose();
+    }
+  };
+
   return (
     <DayViewContainer>
       <DayViewHeader>
@@ -924,6 +1029,72 @@ export default function StylistDayView({
               <Today />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Select Date">
+            <IconButton 
+              onClick={handleDatePickerClick} 
+              sx={{ 
+                ml: 1,
+                color: theme.palette.primary.main,
+                '&:hover': {
+                  backgroundColor: theme.palette.action.hover
+                }
+              }}
+            >
+              <CalendarMonth />
+            </IconButton>
+          </Tooltip>
+          <Popover
+            open={datePickerOpen}
+            anchorEl={datePickerAnchorEl}
+            onClose={handleDatePickerClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'center',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'center',
+            }}
+            PaperProps={{
+              sx: {
+                p: 2,
+                boxShadow: 3,
+                borderRadius: 2
+              }
+            }}
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', width: 320 }}>
+              <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
+                Select Date
+              </Typography>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  value={currentDate}
+                  onChange={handleDateChange}
+                  slotProps={{
+                    textField: {
+                      variant: 'outlined',
+                      fullWidth: true,
+                      sx: { mb: 2 }
+                    }
+                  }}
+                />
+              </LocalizationProvider>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                <Button onClick={handleDatePickerClose} sx={{ mr: 1 }}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="contained" 
+                  onClick={() => {
+                    handleDateChange(currentDate);
+                  }}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </Box>
+          </Popover>
         </Box>
       </DayViewHeader>
       
@@ -980,7 +1151,10 @@ export default function StylistDayView({
                   <AppointmentCard
                     key={appointment.id}
                     duration={duration}
-                    style={{ top }}
+                    style={{ 
+                      top: `${top}px`,
+                      height: `${duration}px`
+                    }}
                     onClick={(e) => {
                       // Prevent click when dragging is finished
                       if (!draggedAppointment) {
@@ -997,7 +1171,7 @@ export default function StylistDayView({
                       {service?.name || 'Unknown Service'}
                     </Typography>
                     <Typography variant="caption">
-                      {format(startTimeDate, 'h:mm a')} - {format(endTimeDate, 'h:mm a')}
+                      {formatTime(startTimeDate)} - {formatTime(endTimeDate)}
                     </Typography>
                   </AppointmentCard>
                 );

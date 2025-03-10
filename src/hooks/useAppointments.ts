@@ -190,6 +190,31 @@ const checkBreakConflict = (
   });
 };
 
+// Add a helper function to ensure consistent date-time formatting
+const formatAppointmentTime = (dateTimeString: string): string => {
+  const date = new Date(dateTimeString);
+  // Ensure the date is valid
+  if (isNaN(date.getTime())) {
+    console.error('Invalid date:', dateTimeString);
+    throw new Error('Invalid appointment time');
+  }
+  
+  // Preserve the exact time components without any rounding
+  // This ensures appointments are positioned exactly at their scheduled time
+  const formattedDate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+    0,
+    0
+  );
+  
+  // Return ISO string for consistent formatting
+  return formattedDate.toISOString();
+};
+
 export function useAppointments() {
   const queryClient = useQueryClient()
 
@@ -207,11 +232,15 @@ export function useAppointments() {
       // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // Format appointment times consistently with exact minutes
+      const formattedStartTime = formatAppointmentTime(data.start_time);
+      const formattedEndTime = formatAppointmentTime(data.end_time);
+      
       // Load latest stylists data to check breaks
       const stylists = loadStylistsFromStorage();
       
       // Check if this appointment conflicts with any stylist breaks
-      if (checkBreakConflict(data.stylist_id, data.start_time, data.end_time, stylists)) {
+      if (checkBreakConflict(data.stylist_id, formattedStartTime, formattedEndTime, stylists)) {
         throw new Error('This appointment conflicts with a scheduled break for the stylist');
       }
       
@@ -254,14 +283,14 @@ export function useAppointments() {
         throw new Error('Stylist or service not found');
       }
       
-      // Create new appointment
+      // Create new appointment with precisely formatted times
       const newAppointment = {
         id: uuidv4(),
         client_id,
         stylist_id: data.stylist_id,
         service_id: data.service_id,
-        start_time: data.start_time,
-        end_time: data.end_time,
+        start_time: formattedStartTime,
+        end_time: formattedEndTime,
         status: data.status,
         notes: data.notes,
         paid: false,
@@ -293,6 +322,15 @@ export function useAppointments() {
       // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // Format appointment times if they are being updated
+      const formattedUpdates = { ...updates };
+      if (updates.start_time) {
+        formattedUpdates.start_time = formatAppointmentTime(updates.start_time);
+      }
+      if (updates.end_time) {
+        formattedUpdates.end_time = formatAppointmentTime(updates.end_time);
+      }
+      
       const index = mockAppointments.findIndex((a: Appointment) => a.id === updates.id);
       if (index === -1) throw new Error('Appointment not found');
       
@@ -300,7 +338,7 @@ export function useAppointments() {
       const updatedAppointments = [...mockAppointments];
       updatedAppointments[index] = {
         ...updatedAppointments[index],
-        ...updates,
+        ...formattedUpdates,
       };
       
       mockAppointments = updatedAppointments;

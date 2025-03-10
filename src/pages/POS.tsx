@@ -131,9 +131,6 @@ export default function POS() {
   const location = useLocation();
   const appointmentData = location.state?.appointmentData;
   
-  // Tab state
-  const [tabValue, setTabValue] = useState(appointmentData ? 1 : 0); // Set to appointment tab if data exists
-  
   // Data hooks
   const { 
     unpaidAppointments, 
@@ -271,128 +268,41 @@ export default function POS() {
 
   // Handle pre-filled appointment data
   useEffect(() => {
-    if (appointmentData && unpaidAppointments) {
-      // Find the appointment in unpaid appointments
-      const appointment = unpaidAppointments.find(a => a.id === appointmentData.id);
+    if (appointmentData) {
+      // Set customer name and stylist
+      setCustomerName(appointmentData.clientName);
       
-      if (appointment) {
-        // Set the selected appointment
-        setSelectedAppointment(appointment);
-      } else {
-        // If appointment not found in unpaid list, create a walk-in order with the data
-        setTabValue(0); // Switch to walk-in tab
-        
-        // Set customer name and stylist
-        setCustomerName(appointmentData.clientName);
-        
-        // Try to find client in clients list
-        if (clients) {
-          const client = clients.find(c => 
-            c.full_name.toLowerCase() === appointmentData.clientName.toLowerCase()
-          );
-          if (client) {
-            setSelectedClient(client);
-          }
+      // Try to find client in clients list
+      if (clients) {
+        const client = clients.find(c => 
+          c.full_name.toLowerCase() === appointmentData.clientName.toLowerCase()
+        );
+        if (client) {
+          setSelectedClient(client);
         }
-        
-        setSelectedStylist(appointmentData.stylistId);
-        
-        // Find the service in services list
-        const service = allServices?.find(s => s.id === appointmentData.serviceId);
-        
-        if (service) {
-          // Add service to order items
-          handleAddService(service);
-        }
-        
-        // Set appointment time if available
-        if (appointmentData.appointmentTime) {
-          const appointmentDateTime = new Date(appointmentData.appointmentTime);
-          setAppointmentDate(appointmentDateTime);
-          setAppointmentTime(appointmentDateTime);
-        }
-        
-        // Move to services step
-        setActiveStep(1);
       }
+      
+      setSelectedStylist(appointmentData.stylistId);
+      
+      // Find the service in services list
+      const service = allServices?.find(s => s.id === appointmentData.serviceId);
+      
+      if (service) {
+        // Add service to order items
+        handleAddService(service);
+      }
+      
+      // Set appointment time if available
+      if (appointmentData.appointmentTime) {
+        const appointmentDateTime = new Date(appointmentData.appointmentTime);
+        setAppointmentDate(appointmentDateTime);
+        setAppointmentTime(appointmentDateTime);
+      }
+      
+      // Move to services step
+      setActiveStep(1);
     }
-  }, [appointmentData, unpaidAppointments, allServices, clients]);
-
-  // Handle tab change
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
-  // Handle appointment selection
-  const handleAppointmentSelect = (appointment: any) => {
-    setSelectedAppointment(appointment);
-    setCustomerName(appointment?.client_name || '');
-    setAppointmentDiscount(0); // Reset discount when selecting new appointment
-  };
-
-  // Handle client selection
-  const handleClientSelect = (client: any) => {
-    setSelectedClient(client);
-    if (client) {
-      setCustomerName(client.full_name);
-    } else {
-      setCustomerName('');
-    }
-  };
-
-  // Update handleAppointmentPayment function to separate services and products
-  const handleAppointmentPayment = async () => {
-    try {
-      if (!selectedAppointment || !selectedStylist) return;
-      
-      // Create array of services from order items
-      const services = orderItems.map(item => ({
-        service_id: item.service.id,
-        service_name: item.service.name,
-        price: item.customPrice || item.service.price,
-        type: item.type as 'service' | 'product'
-      }));
-      
-      // Get only the prices
-      const servicePrices = services.map(service => service.price);
-      
-      // Calculate totals
-      const { subtotal, tax, total } = calculateTotal(servicePrices, appointmentDiscount, appointmentPaymentMethod);
-      
-      // Process payment
-      await processAppointmentPayment({
-        appointment_id: selectedAppointment.id,
-        client_name: selectedAppointment.clients.full_name,
-        stylist_id: selectedAppointment.stylist_id,
-        services,
-        total,
-        subtotal,
-        tax,
-        discount: appointmentDiscount,
-        payment_method: appointmentPaymentMethod,
-        is_walk_in: false
-      });
-      
-      // Reset form
-      setSelectedAppointment(null);
-      setOrderItems([]);
-      setAppointmentDiscount(0);
-      setAppointmentPaymentMethod('credit_card');
-      
-      // Navigate back to first step
-      setActiveStep(0);
-      
-      // Show success message
-      setSnackbarMessage('Payment processed successfully');
-      setSnackbarOpen(true);
-    } catch (error) {
-      console.error('Payment error:', error);
-      setSnackbarMessage('Failed to process payment');
-      setSnackbarOpen(true);
-    } finally {
-      setProcessing(false);
-    }
-  };
+  }, [appointmentData, allServices, clients]);
 
   // Update the handleAddService function
   const handleAddService = (service: POSService, itemType: 'service' | 'product' = 'service') => {
@@ -875,666 +785,438 @@ export default function POS() {
   }
 
   return (
-    <Box>
-      <Typography variant="h1" gutterBottom>Point of Sale</Typography>
-      
-      <Paper sx={{ mb: 3 }}>
-        <Tabs
-          value={tabValue}
-          onChange={handleTabChange}
-          indicatorColor="primary"
-          textColor="primary"
-          centered
-        >
-          <Tab 
-            icon={<CartIcon />} 
-            label="Walk-in Sale" 
-            iconPosition="start"
-          />
-          <Tab 
-            icon={<PaymentIcon />} 
-            label="Appointment Payment" 
-            iconPosition="start"
-          />
-        </Tabs>
-      </Paper>
-      
-      {/* Walk-in Sales Tab */}
-      <TabPanel value={tabValue} index={0}>
-        <Grid container spacing={3} sx={{ height: '100%' }}>
-          {/* Left side - Cart and Process */}
-          <Grid item xs={12} md={8} sx={{ height: '100%' }}>
-            <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
-                <Step>
-                  <StepLabel>Customer & Stylist</StepLabel>
-                </Step>
-                <Step>
-                  <StepLabel>Services</StepLabel>
-                </Step>
-                <Step>
-                  <StepLabel>Payment</StepLabel>
-                </Step>
-              </Stepper>
-              
-              <Box sx={{ flex: 1, overflow: 'auto' }}>
-                {/* Step 1: Customer & Stylist */}
-                {activeStep === 0 && (
-                  <Box sx={{ p: 2 }}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12}>
-                        <Autocomplete
-                          id="client-select"
-                          options={clients || []}
-                          getOptionLabel={(option) => option.full_name}
-                          value={selectedClient}
-                          onChange={(event, newValue) => handleClientSelect(newValue)}
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              label="Select Client"
-                              required
-                              error={customerName.trim() === ''}
-                              helperText={customerName.trim() === '' ? 'Client name is required' : ''}
-                              InputProps={{
-                                ...params.InputProps,
-                                startAdornment: (
-                                  <>
-                                    <InputAdornment position="start">
-                                      <PersonIcon />
-                                    </InputAdornment>
-                                    {params.InputProps.startAdornment}
-                                  </>
-                                ),
-                              }}
-                            />
-                          )}
-                          renderOption={(props, option) => {
-                            // Extract the key from props to pass it directly
-                            const { key, ...otherProps } = props;
-                            return (
-                              <li key={key} {...otherProps}>
-                                <Box>
-                                  <Typography variant="body1">{option.full_name}</Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {option.phone && `Phone: ${option.phone}`} 
-                                    {option.total_spent > 0 && ` • Total Spent: ${formatCurrency(option.total_spent)}`}
-                                    {option.pending_payment > 0 && ` • Pending: ${formatCurrency(option.pending_payment)}`}
-                                  </Typography>
-                                </Box>
-                              </li>
-                            );
-                          }}
-                          freeSolo
-                          onInputChange={(event, newInputValue) => {
-                            setCustomerName(newInputValue);
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <FormControl fullWidth required error={selectedStylist === ''}>
-                          <InputLabel>Select Stylist</InputLabel>
-                          <Select
-                            value={selectedStylist}
-                            onChange={(e) => setSelectedStylist(e.target.value as string)}
-                            label="Select Stylist"
-                          >
-                            {stylists?.map((stylist) => (
-                              <MenuItem key={stylist.id} value={stylist.id}>
-                                {stylist.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          {selectedStylist === '' && (
-                            <Typography variant="caption" color="error">
-                              Stylist selection is required
-                            </Typography>
-                          )}
-                        </FormControl>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                          Schedule Appointment (Optional)
-                        </Typography>
-                        <LocalizationProvider dateAdapter={AdapterDateFns}>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <DatePicker
-                                label="Appointment Date"
-                                value={appointmentDate}
-                                onChange={(newDate) => setAppointmentDate(newDate)}
-                                slotProps={{ textField: { fullWidth: true } }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TimePicker
-                                label="Appointment Time"
-                                value={appointmentTime}
-                                onChange={(newTime) => setAppointmentTime(newTime)}
-                                slotProps={{ textField: { fullWidth: true } }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </LocalizationProvider>
-                      </Grid>
-                    </Grid>
-                  </Box>
-                )}
-                
-                {/* Step 2: Services */}
-                {activeStep === 1 && (
-                  <>
-                    {renderServiceSelectionSection()}
-                    {renderProductsSelectionSection()}
-                  </>
-                )}
-                
-                {/* Step 3: Payment */}
-                {activeStep === 2 && (
-                  <Box sx={{ p: 2 }}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom>
-                          Payment Method
-                        </Typography>
-                        
-                        <FormControl fullWidth sx={{ mb: 3 }}>
-                          <InputLabel>Payment Method</InputLabel>
-                          <Select
-                            value={walkInPaymentMethod}
-                            onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
-                            label="Payment Method"
-                          >
-                            {PAYMENT_METHODS.map((method) => (
-                              <MenuItem key={method} value={method}>
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                  <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                                  {PAYMENT_METHOD_LABELS[method]}
-                                </Box>
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        
-                        {walkInPaymentMethod === 'bnpl' && (
-                          <Alert severity="info" sx={{ mb: 3 }}>
-                            Buy Now Pay Later: The customer will need to pay the full amount later.
-                          </Alert>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Point of Sale
+      </Typography>
+
+      {/* Remove tab structure and directly show Walk-in Sale content */}
+      <Grid container spacing={2} sx={{ flex: 1, height: 'calc(100% - 48px)' }}>
+        {/* Left side - Order Creation */}
+        <Grid item xs={12} md={8} sx={{ height: '100%' }}>
+          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
+              <Step>
+                <StepLabel>Customer & Stylist</StepLabel>
+              </Step>
+              <Step>
+                <StepLabel>Services</StepLabel>
+              </Step>
+              <Step>
+                <StepLabel>Payment</StepLabel>
+              </Step>
+            </Stepper>
+            
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              {/* Step 1: Customer & Stylist */}
+              {activeStep === 0 && (
+                <Box sx={{ p: 2 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                      <Autocomplete
+                        id="client-select"
+                        options={clients || []}
+                        getOptionLabel={(option) => option.full_name}
+                        value={selectedClient}
+                        onChange={(event, newValue) => handleClientSelect(newValue)}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Select Client"
+                            required
+                            error={customerName.trim() === ''}
+                            helperText={customerName.trim() === '' ? 'Client name is required' : ''}
+                            InputProps={{
+                              ...params.InputProps,
+                              startAdornment: (
+                                <>
+                                  <InputAdornment position="start">
+                                    <PersonIcon />
+                                  </InputAdornment>
+                                  {params.InputProps.startAdornment}
+                                </>
+                              ),
+                            }}
+                          />
                         )}
-                        
-                        <TextField
-                          label="Discount Amount"
-                          type="number"
-                          value={walkInDiscount}
-                          onChange={(e) => setWalkInDiscount(Number(e.target.value))}
-                          fullWidth
-                          InputProps={{
-                            inputProps: { min: 0, max: orderSubtotal },
-                            startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom>
-                          Order Summary
-                        </Typography>
-                        
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                          <Box>
-                            {serviceItems.length > 0 && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography>Service Subtotal:</Typography>
-                                <Typography>{formatCurrency(serviceSubtotal)}</Typography>
+                        renderOption={(props, option) => {
+                          // Extract the key from props to pass it directly
+                          const { key, ...otherProps } = props;
+                          return (
+                            <li key={key} {...otherProps}>
+                              <Box>
+                                <Typography variant="body1">{option.full_name}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {option.phone && `Phone: ${option.phone}`} 
+                                  {option.total_spent > 0 && ` • Total Spent: ${formatCurrency(option.total_spent)}`}
+                                  {option.pending_payment > 0 && ` • Pending: ${formatCurrency(option.pending_payment)}`}
+                                </Typography>
                               </Box>
-                            )}
-                            
-                            {productItems.length > 0 && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography>Product Subtotal:</Typography>
-                                <Typography>{formatCurrency(productSubtotal)}</Typography>
-                              </Box>
-                            )}
-                            
-                            {(serviceItems.length > 0 && productItems.length > 0) && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-                                <Typography fontWeight="medium">Combined Subtotal:</Typography>
-                                <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
-                              </Box>
-                            )}
-                            
-                            {walkInPaymentMethod !== 'cash' && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography>GST (18%):</Typography>
-                                <Typography>{formatCurrency(tax)}</Typography>
-                              </Box>
-                            )}
-                            
-                            {walkInPaymentMethod === 'cash' && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography color="success.main">No GST (Cash Payment)</Typography>
-                                <Typography color="success.main">₹0</Typography>
-                              </Box>
-                            )}
-                            
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography>Discount:</Typography>
-                              <Typography color="error">
-                                -{formatCurrency(walkInDiscount)}
-                              </Typography>
-                            </Box>
-                            
-                            <Divider sx={{ my: 1 }} />
-                            
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="h6">Total:</Typography>
-                              <Typography variant="h6" color="primary">{formatCurrency(total)}</Typography>
-                            </Box>
-                          </Box>
-                        </Paper>
-                      </Grid>
+                            </li>
+                          );
+                        }}
+                        freeSolo
+                        onInputChange={(event, newInputValue) => {
+                          setCustomerName(newInputValue);
+                        }}
+                      />
                     </Grid>
-                  </Box>
-                )}
-              </Box>
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 2 }}>
-                <Button
-                  variant="outlined"
-                  onClick={handleBack}
-                  disabled={activeStep === 0}
-                >
-                  Back
-                </Button>
-                
-                {activeStep === 2 ? (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleCreateWalkInOrder}
-                    disabled={processing || !isStepValid()}
-                    startIcon={processing ? <CircularProgress size={20} /> : <CheckIcon />}
-                  >
-                    {processing ? 'Processing...' : 'Complete Order'}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleNext}
-                    disabled={!isStepValid()}
-                  >
-                    Next
-                  </Button>
-                )}
-              </Box>
-            </Paper>
-          </Grid>
-          
-          {/* Right side - Order Summary */}
-          <Grid item xs={12} md={4} sx={{ height: '100%' }}>
-            <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="h6" gutterBottom>
-                Order Summary
-              </Typography>
-              
-              {orderItems.length > 0 ? (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <List sx={{ flex: 1, overflow: 'auto' }}>
-                    {/* Show services */}
-                    {serviceItems.length > 0 && (
-                      <ListItem dense>
-                        <ListItemText
-                          primary={<Typography variant="subtitle2" color="primary">Services</Typography>}
-                        />
-                      </ListItem>
-                    )}
                     
-                    {serviceItems.map((item) => (
-                      <ListItem key={item.service.id}>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <ContentCutIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
-                              <Typography>{item.service.name} (×{item.quantity})</Typography>
-                            </Box>
-                          }
-                          secondary={item.service.duration ? `${item.service.duration} min` : null}
-                        />
-                        <ListItemSecondaryAction>
-                          <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
+                    <Grid item xs={12}>
+                      <FormControl fullWidth required error={selectedStylist === ''}>
+                        <InputLabel>Select Stylist</InputLabel>
+                        <Select
+                          value={selectedStylist}
+                          onChange={(e) => setSelectedStylist(e.target.value as string)}
+                          label="Select Stylist"
+                        >
+                          {stylists?.map((stylist) => (
+                            <MenuItem key={stylist.id} value={stylist.id}>
+                              {stylist.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {selectedStylist === '' && (
+                          <Typography variant="caption" color="error">
+                            Stylist selection is required
+                          </Typography>
+                        )}
+                      </FormControl>
+                    </Grid>
                     
-                    {/* Show products */}
-                    {productItems.length > 0 && (
-                      <ListItem dense sx={{ mt: serviceItems.length > 0 ? 2 : 0 }}>
-                        <ListItemText
-                          primary={<Typography variant="subtitle2" color="secondary">Products</Typography>}
-                        />
-                      </ListItem>
-                    )}
-                    
-                    {productItems.map((item) => (
-                      <ListItem key={item.service.id}>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <ShoppingBasketIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
-                              <Typography>{item.service.name} (×{item.quantity})</Typography>
-                            </Box>
-                          }
-                        />
-                        <ListItemSecondaryAction>
-                          <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
-                  </List>
-                  
-                  <Divider sx={{ my: 2 }} />
-                  
-                  {/* Order Totals */}
-                  <Box>
-                    {serviceItems.length > 0 && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>Service Subtotal:</Typography>
-                        <Typography>{formatCurrency(serviceSubtotal)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {productItems.length > 0 && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>Product Subtotal:</Typography>
-                        <Typography>{formatCurrency(productSubtotal)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {(serviceItems.length > 0 && productItems.length > 0) && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-                        <Typography fontWeight="medium">Combined Subtotal:</Typography>
-                        <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {walkInPaymentMethod !== 'cash' && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>GST (18%):</Typography>
-                        <Typography>{formatCurrency(tax)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {walkInPaymentMethod === 'cash' && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography color="success.main">No GST (Cash Payment)</Typography>
-                        <Typography color="success.main">₹0</Typography>
-                      </Box>
-                    )}
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography>Discount:</Typography>
-                      <Typography color="error">
-                        -{formatCurrency(walkInDiscount)}
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                        Schedule Appointment (Optional)
                       </Typography>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                      <Typography variant="h6">Total:</Typography>
-                      <Typography variant="h6" color="primary">
-                        {formatCurrency(total)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  
-                  {/* Customer & Stylist Info */}
-                  {customerName && selectedStylist && (
-                    <Box sx={{ mt: 2 }}>
-                      <Chip 
-                        icon={<PersonIcon />} 
-                        label={`Customer: ${customerName}`} 
-                        sx={{ mb: 1, mr: 1 }} 
-                      />
-                      <Chip 
-                        icon={<ContentCutIcon />} 
-                        label={`Stylist: ${stylists?.find(s => s.id === selectedStylist)?.name}`} 
-                        sx={{ mb: 1 }} 
-                      />
-                      
-                      {appointmentDate && appointmentTime && (
-                        <Chip 
-                          icon={<AccessTimeIcon />} 
-                          label={`${appointmentDate.toLocaleDateString()} at ${appointmentTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`} 
-                          sx={{ mb: 1 }} 
-                        />
-                      )}
-                    </Box>
-                  )}
-                </Box>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-                  <CartIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-                  <Typography variant="h6" color="text.secondary">
-                    Your cart is empty
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Add services to create an order
-                  </Typography>
+                      <LocalizationProvider dateAdapter={AdapterDateFns}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <DatePicker
+                              label="Appointment Date"
+                              value={appointmentDate}
+                              onChange={(newDate) => setAppointmentDate(newDate)}
+                              slotProps={{ textField: { fullWidth: true } }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TimePicker
+                              label="Appointment Time"
+                              value={appointmentTime}
+                              onChange={(newTime) => setAppointmentTime(newTime)}
+                              slotProps={{ textField: { fullWidth: true } }}
+                            />
+                          </Grid>
+                        </Grid>
+                      </LocalizationProvider>
+                    </Grid>
+                  </Grid>
                 </Box>
               )}
-            </Paper>
-          </Grid>
+              
+              {/* Step 2: Services */}
+              {activeStep === 1 && (
+                <>
+                  {renderServiceSelectionSection()}
+                  {renderProductsSelectionSection()}
+                </>
+              )}
+              
+              {/* Step 3: Payment */}
+              {activeStep === 2 && (
+                <Box sx={{ p: 2 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="h6" gutterBottom>
+                        Payment Method
+                      </Typography>
+                      
+                      <FormControl fullWidth sx={{ mb: 3 }}>
+                        <InputLabel>Payment Method</InputLabel>
+                        <Select
+                          value={walkInPaymentMethod}
+                          onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
+                          label="Payment Method"
+                        >
+                          {PAYMENT_METHODS.map((method) => (
+                            <MenuItem key={method} value={method}>
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                                {PAYMENT_METHOD_LABELS[method]}
+                              </Box>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      
+                      {walkInPaymentMethod === 'bnpl' && (
+                        <Alert severity="info" sx={{ mb: 3 }}>
+                          Buy Now Pay Later: The customer will need to pay the full amount later.
+                        </Alert>
+                      )}
+                      
+                      <TextField
+                        label="Discount Amount"
+                        type="number"
+                        value={walkInDiscount}
+                        onChange={(e) => setWalkInDiscount(Number(e.target.value))}
+                        fullWidth
+                        InputProps={{
+                          inputProps: { min: 0, max: orderSubtotal },
+                          startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="h6" gutterBottom>
+                        Order Summary
+                      </Typography>
+                      
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Box>
+                          {serviceItems.length > 0 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>Service Subtotal:</Typography>
+                              <Typography>{formatCurrency(serviceSubtotal)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {productItems.length > 0 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>Product Subtotal:</Typography>
+                              <Typography>{formatCurrency(productSubtotal)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {(serviceItems.length > 0 && productItems.length > 0) && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
+                              <Typography fontWeight="medium">Combined Subtotal:</Typography>
+                              <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {walkInPaymentMethod !== 'cash' && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>GST (18%):</Typography>
+                              <Typography>{formatCurrency(tax)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {walkInPaymentMethod === 'cash' && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography color="success.main">No GST (Cash Payment)</Typography>
+                              <Typography color="success.main">₹0</Typography>
+                            </Box>
+                          )}
+                          
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography>Discount:</Typography>
+                            <Typography color="error">
+                              -{formatCurrency(walkInDiscount)}
+                            </Typography>
+                          </Box>
+                          
+                          <Divider sx={{ my: 1 }} />
+                          
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="h6">Total:</Typography>
+                            <Typography variant="h6" color="primary">{formatCurrency(total)}</Typography>
+                          </Box>
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </Box>
+              )}
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={handleBack}
+                disabled={activeStep === 0}
+              >
+                Back
+              </Button>
+              
+              {activeStep === 2 ? (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleCreateWalkInOrder}
+                  disabled={processing || !isStepValid()}
+                  startIcon={processing ? <CircularProgress size={20} /> : <CheckIcon />}
+                >
+                  {processing ? 'Processing...' : 'Complete Order'}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleNext}
+                  disabled={!isStepValid()}
+                >
+                  Next
+                </Button>
+              )}
+            </Box>
+          </Paper>
         </Grid>
-      </TabPanel>
-      
-      {/* Appointment Payment Tab */}
-      <TabPanel value={tabValue} index={1}>
-        <Grid container spacing={3} sx={{ height: '100%' }}>
-          {/* Left side - Appointment List */}
-          <Grid item xs={12} md={8}>
-            <Paper sx={{ p: 2, height: '100%', overflow: 'auto' }}>
-              <Typography variant="h6" gutterBottom>Unpaid Appointments</Typography>
-              {unpaidAppointments?.length ? (
-                <List>
-                  {unpaidAppointments.map((appointment) => (
-                    <ListItem
-                      key={appointment.id}
-                      button
-                      selected={selectedAppointment?.id === appointment.id}
-                      onClick={() => handleAppointmentSelect(appointment)}
-                      sx={{ 
-                        mb: 1,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          boxShadow: 1,
-                          borderColor: 'primary.main',
-                        },
-                        '&.Mui-selected': {
-                          backgroundColor: 'primary.light',
-                          '&:hover': {
-                            backgroundColor: 'primary.light',
-                          }
-                        }
-                      }}
-                    >
+        
+        {/* Right side - Order Summary */}
+        <Grid item xs={12} md={4} sx={{ height: '100%' }}>
+          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="h6" gutterBottom>
+              Order Summary
+            </Typography>
+            
+            {orderItems.length > 0 ? (
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <List sx={{ flex: 1, overflow: 'auto' }}>
+                  {/* Show services */}
+                  {serviceItems.length > 0 && (
+                    <ListItem dense>
+                      <ListItemText
+                        primary={<Typography variant="subtitle2" color="primary">Services</Typography>}
+                      />
+                    </ListItem>
+                  )}
+                  
+                  {serviceItems.map((item) => (
+                    <ListItem key={item.service.id}>
                       <ListItemText
                         primary={
-                          <Typography variant="subtitle1">
-                            {appointment.clients.full_name}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <ContentCutIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
+                            <Typography>{item.service.name} (×{item.quantity})</Typography>
+                          </Box>
                         }
-                        secondary={
-                          <>
-                            <Typography variant="body2" component="span">
-                              {appointment.services.name} - {formatCurrency(appointment.services.price)}
-                            </Typography>
-                            <br />
-                            <Typography variant="caption" color="text.secondary">
-                              {new Date(appointment.start_time).toLocaleString([], {
-                                dateStyle: 'medium',
-                                timeStyle: 'short'
-                              })}
-                            </Typography>
-                          </>
+                        secondary={item.service.duration ? `${item.service.duration} min` : null}
+                      />
+                      <ListItemSecondaryAction>
+                        <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                  
+                  {/* Show products */}
+                  {productItems.length > 0 && (
+                    <ListItem dense sx={{ mt: serviceItems.length > 0 ? 2 : 0 }}>
+                      <ListItemText
+                        primary={<Typography variant="subtitle2" color="secondary">Products</Typography>}
+                      />
+                    </ListItem>
+                  )}
+                  
+                  {productItems.map((item) => (
+                    <ListItem key={item.service.id}>
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <ShoppingBasketIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
+                            <Typography>{item.service.name} (×{item.quantity})</Typography>
+                          </Box>
                         }
                       />
                       <ListItemSecondaryAction>
-                        <Typography variant="h6" color="primary">
-                          {formatCurrency(appointment.services.price)}
-                        </Typography>
+                        <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
                       </ListItemSecondaryAction>
                     </ListItem>
                   ))}
                 </List>
-              ) : (
-                <Alert severity="info">
-                  No unpaid appointments found. All appointments have been processed.
-                </Alert>
-              )}
-            </Paper>
-          </Grid>
-
-          {/* Right side - Payment Processing */}
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="h6" gutterBottom>Payment Details</Typography>
-              
-              {selectedAppointment ? (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Client: {selectedAppointment.clients.full_name}
-                    </Typography>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Service: {selectedAppointment.services.name}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Appointment: {new Date(selectedAppointment.start_time).toLocaleString([], {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      })}
-                    </Typography>
-                  </Box>
-
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Payment Method</InputLabel>
-                    <Select
-                      value={appointmentPaymentMethod}
-                      label="Payment Method"
-                      onChange={(e) => setAppointmentPaymentMethod(e.target.value as PaymentMethod)}
-                    >
-                      {PAYMENT_METHODS.map((method) => (
-                        <MenuItem key={method} value={method}>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                            {PAYMENT_METHOD_LABELS[method]}
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    label="Discount"
-                    type="number"
-                    value={appointmentDiscount}
-                    onChange={(e) => setAppointmentDiscount(Number(e.target.value))}
-                    fullWidth
-                    sx={{ mb: 3 }}
-                    InputProps={{
-                      inputProps: { min: 0, max: selectedAppointment.services.price },
-                      startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                    }}
-                  />
-
-                  <Box sx={{ mt: 'auto' }}>
-                    <Divider sx={{ mb: 2 }} />
-                    
-                    {/* Payment Summary */}
-                    <Box sx={{ mb: 2 }}>
-                      {serviceItems.length > 0 && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography>Service Subtotal:</Typography>
-                          <Typography>{formatCurrency(serviceSubtotal)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {productItems.length > 0 && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography>Product Subtotal:</Typography>
-                          <Typography>{formatCurrency(productSubtotal)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {(serviceItems.length > 0 && productItems.length > 0) && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-                          <Typography fontWeight="medium">Combined Subtotal:</Typography>
-                          <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {walkInPaymentMethod !== 'cash' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography>GST (18%):</Typography>
-                          <Typography>{formatCurrency(tax)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {walkInPaymentMethod === 'cash' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography color="success.main">No GST (Cash Payment)</Typography>
-                          <Typography color="success.main">₹0</Typography>
-                        </Box>
-                      )}
-                      
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>Discount:</Typography>
-                        <Typography color="error">
-                          -{formatCurrency(appointmentDiscount)}
-                        </Typography>
-                      </Box>
-                      
-                      <Divider sx={{ my: 1 }} />
-                      
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="h6">Total:</Typography>
-                        <Typography variant="h6" color="primary">
-                          {formatCurrency(
-                            calculateTotal([selectedAppointment.services.price], appointmentDiscount, appointmentPaymentMethod).total
-                          )}
-                        </Typography>
-                      </Box>
+                
+                <Divider sx={{ my: 2 }} />
+                
+                {/* Order Totals */}
+                <Box>
+                  {serviceItems.length > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography>Service Subtotal:</Typography>
+                      <Typography>{formatCurrency(serviceSubtotal)}</Typography>
                     </Box>
-
-                    <Button
-                      variant="contained"
-                      fullWidth
-                      size="large"
-                      onClick={handleAppointmentPayment}
-                      disabled={processing}
-                      startIcon={processing ? <CircularProgress size={20} /> : <PaymentIcon />}
-                    >
-                      {processing ? 'Processing...' : 'Process Payment'}
-                    </Button>
+                  )}
+                  
+                  {productItems.length > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography>Product Subtotal:</Typography>
+                      <Typography>{formatCurrency(productSubtotal)}</Typography>
+                    </Box>
+                  )}
+                  
+                  {(serviceItems.length > 0 && productItems.length > 0) && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
+                      <Typography fontWeight="medium">Combined Subtotal:</Typography>
+                      <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
+                    </Box>
+                  )}
+                  
+                  {walkInPaymentMethod !== 'cash' && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography>GST (18%):</Typography>
+                      <Typography>{formatCurrency(tax)}</Typography>
+                    </Box>
+                  )}
+                  
+                  {walkInPaymentMethod === 'cash' && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography color="success.main">No GST (Cash Payment)</Typography>
+                      <Typography color="success.main">₹0</Typography>
+                    </Box>
+                  )}
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography>Discount:</Typography>
+                    <Typography color="error">
+                      -{formatCurrency(walkInDiscount)}
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                    <Typography variant="h6">Total:</Typography>
+                    <Typography variant="h6" color="primary">
+                      {formatCurrency(total)}
+                    </Typography>
                   </Box>
                 </Box>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-                  <PaymentIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-                  <Typography color="text.secondary">
-                    Select an appointment to process payment
-                  </Typography>
-                </Box>
-              )}
-            </Paper>
-          </Grid>
+                
+                {/* Customer & Stylist Info */}
+                {customerName && selectedStylist && (
+                  <Box sx={{ mt: 2 }}>
+                    <Chip 
+                      icon={<PersonIcon />} 
+                      label={`Customer: ${customerName}`} 
+                      sx={{ mb: 1, mr: 1 }} 
+                    />
+                    <Chip 
+                      icon={<ContentCutIcon />} 
+                      label={`Stylist: ${stylists?.find(s => s.id === selectedStylist)?.name}`} 
+                      sx={{ mb: 1 }} 
+                    />
+                    
+                    {appointmentDate && appointmentTime && (
+                      <Chip 
+                        icon={<AccessTimeIcon />} 
+                        label={`${appointmentDate.toLocaleDateString()} at ${appointmentTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`} 
+                        sx={{ mb: 1 }} 
+                      />
+                    )}
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+                <CartIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary">
+                  Your cart is empty
+                </Typography>
+                <Typography variant="body2" color="text.secondary" align="center">
+                  Add services to create an order
+                </Typography>
+              </Box>
+            )}
+          </Paper>
         </Grid>
-      </TabPanel>
+      </Grid>
       
       {/* Snackbar for notifications */}
       <Snackbar
