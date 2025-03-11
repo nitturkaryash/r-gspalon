@@ -304,6 +304,16 @@ export default function POS() {
     }
   }, [appointmentData, allServices, clients]);
 
+  // Handle client selection
+  const handleClientSelect = (client: any) => {
+    setSelectedClient(client);
+    if (client) {
+      setCustomerName(client.full_name);
+    } else {
+      setCustomerName('');
+    }
+  };
+
   // Update the handleAddService function
   const handleAddService = (service: POSService, itemType: 'service' | 'product' = 'service') => {
     // Check if the service is already in the order
