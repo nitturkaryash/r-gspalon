@@ -412,21 +412,21 @@ export function usePOS() {
     
     // If split payments are provided, calculate GST based on payment methods
     if (splitPayments && splitPayments.length > 0) {
-      // Calculate GST only for non-cash payments
+      // Calculate GST for all payments
       let tax = 0;
       
-      // Sum all non-cash payment amounts
-      const nonCashPaymentTotal = splitPayments
-        .filter(payment => payment.payment_method !== 'cash')
+      // Sum all payment amounts
+      const totalPaymentAmount = splitPayments
         .reduce((sum, payment) => sum + payment.amount, 0);
       
-      // Calculate GST on non-cash payments
-      if (nonCashPaymentTotal > 0) {
+      // Calculate GST on all payments
+      if (totalPaymentAmount > 0) {
         // GST is 18% of the base amount, which is calculated as amount / 1.18
-        tax = Math.round(nonCashPaymentTotal * GST_RATE / (1 + GST_RATE));
+        tax = Math.round(totalPaymentAmount * GST_RATE / (1 + GST_RATE));
       }
       
-      const total = subtotal - discount;
+      // Add tax to total calculation
+      const total = subtotal + tax - discount;
       
       return {
         subtotal: Math.round(subtotal),
@@ -434,12 +434,11 @@ export function usePOS() {
         total: Math.round(total),
       };
     } else {
-      // Apply GST only if payment method is not cash (original logic)
-      const tax = paymentMethod === 'cash' 
-        ? 0 // No GST for cash payments
-        : Math.round(subtotal * GST_RATE / (1 + GST_RATE)); // Apply GST for other payment methods
+      // Apply GST to all payment methods including cash
+      const tax = Math.round(subtotal * GST_RATE / (1 + GST_RATE)); // Apply GST for all payment methods
       
-      const total = subtotal - discount;
+      // Add tax to total calculation
+      const total = subtotal + tax - discount;
       
       return {
         subtotal: Math.round(subtotal),
