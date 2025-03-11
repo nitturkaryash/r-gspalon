@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Box,
+  Container,
   Typography,
   Paper,
   Button,
@@ -16,16 +17,32 @@ import {
   CardActions,
   Divider,
   CircularProgress,
+  Tabs,
+  Tab,
+  useTheme,
 } from '@mui/material'
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   ArrowForward as ArrowForwardIcon,
+  Storage as StorageIcon,
+  SwapHoriz as SwapHorizIcon,
+  Inventory as InventoryIcon,
+  Analytics as AnalyticsIcon,
+  Sync as SyncIcon,
+  Receipt as ReceiptIcon,
 } from '@mui/icons-material'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCollections } from '../hooks/useCollections'
 import type { Collection } from '../models/inventoryTypes'
+import PageHeader from '../components/PageHeader'
+
+// Import our new components
+import StockDataExtractor from '../components/inventory/StockDataExtractor'
+import TransactionConverter from '../components/inventory/TransactionConverter'
+import InventoryBalanceReport from '../components/inventory/InventoryBalanceReport'
+import StockInsights from '../components/inventory/StockInsights'
 
 // Initial form data for collections
 const initialFormData = {
@@ -33,12 +50,51 @@ const initialFormData = {
   description: '',
 }
 
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`inventory-tabpanel-${index}`}
+      aria-labelledby={`inventory-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ pt: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+function a11yProps(index: number) {
+  return {
+    id: `inventory-tab-${index}`,
+    'aria-controls': `inventory-tabpanel-${index}`,
+  };
+}
+
 export default function Inventory() {
   const { collections, isLoading, createCollection, updateCollection, deleteCollection } = useCollections()
   const [open, setOpen] = useState(false)
   const [formData, setFormData] = useState(initialFormData)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [tabValue, setTabValue] = useState(0)
   const navigate = useNavigate()
+  const theme = useTheme()
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
 
   const handleOpen = () => setOpen(true)
   const handleClose = () => {
@@ -83,7 +139,7 @@ export default function Inventory() {
     navigate(`/inventory/${id}`)
   }
 
-  if (isLoading) {
+  if (isLoading && tabValue === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
@@ -92,120 +148,90 @@ export default function Inventory() {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h1">Inventory Collections</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpen}
-          sx={{ height: 'fit-content' }}
+    <Container maxWidth="xl">
+      <PageHeader
+        title="Inventory Management"
+        subtitle="Track and manage your salon's product inventory"
+        icon={<InventoryIcon fontSize="large" />}
+      />
+
+      <Paper sx={{ 
+        borderRadius: theme.shape.borderRadius, 
+        overflow: 'hidden',
+        boxShadow: theme.shadows[2],
+        mb: 4 
+      }}>
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          aria-label="inventory management tabs"
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            backgroundColor: theme.palette.background.default,
+            borderBottom: 1,
+            borderColor: 'divider',
+            '& .MuiTab-root': {
+              minHeight: 64,
+              py: 2,
+            },
+          }}
         >
-          Add Collection
-        </Button>
-      </Box>
+          <Tab 
+            icon={<InventoryIcon />} 
+            label="Inventory Balance" 
+            iconPosition="start"
+            {...a11yProps(0)} 
+          />
+          <Tab 
+            icon={<AnalyticsIcon />} 
+            label="Insights & Analytics" 
+            iconPosition="start"
+            {...a11yProps(1)} 
+          />
+          <Tab 
+            icon={<SyncIcon />} 
+            label="Data Import" 
+            iconPosition="start"
+            {...a11yProps(2)} 
+          />
+          <Tab 
+            icon={<ReceiptIcon />} 
+            label="Transactions" 
+            iconPosition="start"
+            {...a11yProps(3)} 
+          />
+        </Tabs>
 
-      {collections?.length ? (
-        <Grid container spacing={3}>
-          {collections.map((collection) => (
-            <Grid item xs={12} sm={6} md={4} key={collection.id}>
-              <Card sx={{ 
-                height: '100%', 
-                display: 'flex', 
-                flexDirection: 'column',
-                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 6,
-                  cursor: 'pointer',
-                },
-              }} onClick={() => handleCollectionClick(collection.id)}>
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" component="div" gutterBottom>
-                    {collection.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {collection.description}
-                  </Typography>
-                </CardContent>
-                <Divider />
-                <CardActions sx={{ justifyContent: 'space-between', p: 2 }}>
-                  <Box>
-                    <IconButton 
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleEdit(collection)
-                      }}
-                      color="primary"
-                      size="small"
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton 
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(collection.id)
-                      }}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Box>
-                  <IconButton 
-                    color="primary"
-                    component={Link}
-                    to={`/inventory/${collection.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ArrowForwardIcon />
-                  </IconButton>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      ) : (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="body1" color="text.secondary">
-            No collections found. Click "Add Collection" to create your first one.
-          </Typography>
-        </Paper>
-      )}
+        <Box sx={{ p: 3 }}>
+          {/* Inventory Balance Tab */}
+          <TabPanel value={tabValue} index={0}>
+            <InventoryBalanceReport />
+          </TabPanel>
 
-      {/* Add/Edit Collection Dialog */}
-      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-        <form onSubmit={handleSubmit}>
-          <DialogTitle>
-            {editingId ? 'Edit Collection' : 'Add New Collection'}
-          </DialogTitle>
-          <DialogContent>
-            <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="Name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                multiline
-                rows={3}
-                fullWidth
-              />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleClose}>Cancel</Button>
-            <Button type="submit" variant="contained">
-              {editingId ? 'Update' : 'Create'}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-    </Box>
+          {/* Insights & Analytics Tab */}
+          <TabPanel value={tabValue} index={1}>
+            <StockInsights />
+          </TabPanel>
+
+          {/* Data Import Tab */}
+          <TabPanel value={tabValue} index={2}>
+            <Typography variant="h6" sx={{ mb: 3 }}>
+              Import Stock Data
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+              Upload your Excel inventory data to keep your stock information up-to-date.
+              Ensure your Excel file follows the required format with the appropriate sheets for purchases, sales, and stock balance.
+            </Typography>
+            <StockDataExtractor />
+          </TabPanel>
+
+          {/* Transactions Tab */}
+          <TabPanel value={tabValue} index={3}>
+            <TransactionConverter />
+          </TabPanel>
+        </Box>
+      </Paper>
+    </Container>
   )
 } 

@@ -1,60 +1,78 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import Layout from './components/Layout'
-import { DevRefresher } from './components/DevRefresher'
+import React, { lazy, Suspense } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { theme } from './theme'; // Your theme configuration
-import React, { lazy, Suspense } from 'react';
+import Layout from './components/Layout';
+import Login from './pages/Login';
+import PageLoader from './components/PageLoader';
+import theme from './theme';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import Dashboard from './pages/Dashboard';
+import Members from './pages/Members';
+import Inventory from './pages/Inventory';
 
-// Regular imports for smaller pages
-import Dashboard from './pages/Dashboard'
-import Clients from './pages/Clients'
-import Orders from './pages/Orders'
-import Inventory from './pages/Inventory'
-import CollectionDetail from './pages/CollectionDetail'
-import ServiceCollections from './pages/ServiceCollections'
-import ServiceCollectionDetail from './pages/ServiceCollectionDetail'
-import Members from './pages/Members'
-
-// Lazy load larger pages
+// Lazy-loaded components for better performance
 const Appointments = lazy(() => import('./pages/Appointments'));
+const Clients = lazy(() => import('./pages/Clients'));
+const ClientDetails = lazy(() => import('./pages/ClientDetails'));
 const Stylists = lazy(() => import('./pages/Stylists'));
-const POS = lazy(() => import('./pages/POS'));
-
-// Loading fallback component
-const PageLoader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-    Loading...
-  </div>
-);
+const Services = lazy(() => import('./pages/Services'));
+const Reports = lazy(() => import('./pages/Reports'));
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Layout>
-        <Suspense fallback={<PageLoader />}>
+      <AuthProvider>
+        <Router>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/appointments" element={<Appointments />} />
-            <Route path="/clients" element={<Clients />} />
-            <Route path="/services" element={<ServiceCollections />} />
-            <Route path="/services/:id" element={<ServiceCollectionDetail />} />
-            <Route path="/stylists" element={<Stylists />} />
-            <Route path="/orders" element={<Orders />} />
-            <Route path="/pos" element={<POS />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/inventory/:id" element={<CollectionDetail />} />
-            <Route path="/members" element={<Members />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route
+                path="appointments"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Appointments />
+                  </Suspense>
+                }
+              />
+              <Route path="clients" element={
+                <Suspense fallback={<PageLoader />}>
+                  <Clients />
+                </Suspense>
+              } />
+              <Route path="clients/:id" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ClientDetails />
+                </Suspense>
+              } />
+              <Route path="stylists" element={
+                <Suspense fallback={<PageLoader />}>
+                  <Stylists />
+                </Suspense>
+              } />
+              <Route path="services" element={
+                <Suspense fallback={<PageLoader />}>
+                  <Services />
+                </Suspense>
+              } />
+              <Route path="reports" element={
+                <Suspense fallback={<PageLoader />}>
+                  <Reports />
+                </Suspense>
+              } />
+              <Route path="members" element={<Members />} />
+              <Route path="inventory" element={<Inventory />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-        </Suspense>
-      </Layout>
-      
-      {/* Only renders in development */}
-      <DevRefresher />
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
-  )
+  );
 }
 
-export default App
+export default App;
