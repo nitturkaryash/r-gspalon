@@ -21,10 +21,17 @@ import {
   Alert,
   useTheme,
   InputAdornment,
-  Popover
+  Popover,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  Divider
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { ChevronLeft, ChevronRight, Today, Receipt, CalendarMonth } from '@mui/icons-material';
+import { ChevronLeft, ChevronRight, Today, Receipt, CalendarMonth, Delete as DeleteIcon } from '@mui/icons-material';
 import { format, addDays, isSameDay } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useClients } from '../hooks/useClients';
@@ -38,12 +45,12 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
 // Custom implementations of date-fns functions
-const formatTime = (date: Date): string => {
-  return date.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
-    minute: '2-digit',
-    hour12: true 
-  });
+const formatTime = (time: string | Date): string => {
+  const date = typeof time === 'string' ? new Date(time) : time;
+  const hour = date.getHours();
+  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  const period = hour >= 12 ? 'PM' : 'AM';
+  return `${hour12}:00 ${period}`;
 };
 
 // Define the time slots for the day (from 8 AM to 10 PM)
@@ -258,20 +265,35 @@ const formatHour = (hour: number): string => {
   return `${hour12}:00 ${period}`;
 };
 
+interface Break extends StylistBreak {
+  startTime: string;
+  endTime: string;
+  reason?: string;
+  id: string;
+}
+
+interface Stylist {
+  id: string;
+  name: string;
+  breaks: Break[];
+  // ... other stylist properties ...
+}
+
 interface StylistDayViewProps {
-  stylists: any[];
+  stylists: Stylist[];
   appointments: any[];
   services: any[];
   selectedDate: Date;
   onSelectTimeSlot: (stylistId: string, time: Date) => void;
   onUpdateAppointment?: (appointmentId: string, updates: any) => Promise<void>;
   onDeleteAppointment?: (appointmentId: string) => Promise<void>;
-  onAddBreak?: (stylistId: string, breakData: { startTime: string; endTime: string; reason?: string }) => Promise<void>;
+  onAddBreak: (stylistId: string, breakData: Break) => Promise<void>;
   onDateChange?: (date: Date) => void;
+  onStylistsChange?: (updatedStylists: Stylist[]) => void;
 }
 
-export default function StylistDayView({
-  stylists,
+const StylistDayView: React.FC<StylistDayViewProps> = ({
+  stylists: initialStylists,
   appointments,
   services,
   selectedDate,
@@ -280,14 +302,16 @@ export default function StylistDayView({
   onDeleteAppointment,
   onAddBreak,
   onDateChange,
-}: StylistDayViewProps) {
+  onStylistsChange,
+}) => {
   const theme = useTheme();
+  const [stylists, setStylists] = useState<Stylist[]>(initialStylists);
+  const [selectedStylist, setSelectedStylist] = useState<Stylist | null>(null);
   const [currentDate, setCurrentDate] = useState<Date>(selectedDate || new Date());
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState<boolean>(false);
   // Add break dialog state
   const [breakDialogOpen, setBreakDialogOpen] = useState<boolean>(false);
-  const [selectedStylist, setSelectedStylist] = useState<string | null>(null);
   const [breakFormData, setBreakFormData] = useState({
     startTime: '',
     endTime: '',
@@ -826,13 +850,16 @@ export default function StylistDayView({
   };
 
   const handleBreakDialogOpen = (stylistId: string) => {
-    setSelectedStylist(stylistId);
-    setBreakFormData({
-      startTime: `${BUSINESS_HOURS.start}:00`,
-      endTime: `${BUSINESS_HOURS.start + 1}:00`,
-      reason: ''
-    });
-    setBreakDialogOpen(true);
+    const foundStylist = stylists.find(s => s.id === stylistId);
+    if (foundStylist) {
+      setSelectedStylist(foundStylist);
+      setBreakFormData({
+        startTime: `${BUSINESS_HOURS.start}:00`,
+        endTime: `${BUSINESS_HOURS.start + 1}:00`,
+        reason: ''
+      });
+      setBreakDialogOpen(true);
+    }
   };
 
   const handleBreakDialogClose = () => {
@@ -846,67 +873,86 @@ export default function StylistDayView({
   };
 
   const handleAddBreak = async () => {
-    if (!selectedStylist || !onAddBreak) return;
-
     try {
-      // Create Date objects for the break times
-      const startDate = new Date(currentDate);
-      const [startHour, startMinute] = breakFormData.startTime.split(':').map(Number);
-      startDate.setHours(startHour, startMinute, 0, 0);
+      if (!selectedStylist) return;
 
-      const endDate = new Date(currentDate);
-      const [endHour, endMinute] = breakFormData.endTime.split(':').map(Number);
-      endDate.setHours(endHour, endMinute, 0, 0);
+      const { startTime, endTime, reason } = breakFormData;
+      if (!startTime || !endTime) {
+        setSnackbarMessage('Please select both start and end times');
+        setSnackbarOpen(true);
+        return;
+      }
 
-      // Ensure end time is after start time
-      if (endDate <= startDate) {
+      // Create dates for validation
+      const formattedStartDate = new Date(currentDate);
+      const [startHour, startMinute] = startTime.split(':').map(Number);
+      formattedStartDate.setHours(startHour, startMinute, 0, 0);
+
+      const formattedEndDate = new Date(currentDate);
+      const [endHour, endMinute] = endTime.split(':').map(Number);
+      formattedEndDate.setHours(endHour, endMinute, 0, 0);
+
+      if (formattedEndDate <= formattedStartDate) {
         setSnackbarMessage('End time must be after start time');
         setSnackbarOpen(true);
         return;
       }
 
-      // Ensure the dates are interpreted correctly by explicitly setting them to the current date
-      // This fixes potential timezone issues
-      const formattedStartDate = new Date(
-        currentDate.getFullYear(),
-        currentDate.getMonth(),
-        currentDate.getDate(),
-        startHour,
-        startMinute,
-        0,
-        0
-      );
-
-      const formattedEndDate = new Date(
-        currentDate.getFullYear(),
-        currentDate.getMonth(),
-        currentDate.getDate(),
-        endHour,
-        endMinute,
-        0,
-        0
-      );
-
-      console.log('Adding break with times:', {
-        startRaw: startDate.toISOString(),
-        endRaw: endDate.toISOString(),
-        startFormatted: formattedStartDate.toISOString(),
-        endFormatted: formattedEndDate.toISOString(),
-        currentDate: currentDate.toISOString()
-      });
-
-      await onAddBreak(selectedStylist, {
+      const breakData: Omit<Break, 'id'> = {
         startTime: formattedStartDate.toISOString(),
         endTime: formattedEndDate.toISOString(),
-        reason: breakFormData.reason
+        reason: reason || ''
+      };
+
+      await onAddBreak(selectedStylist.id, breakData as Break);
+      
+      setBreakDialogOpen(false);
+      setBreakFormData({
+        startTime: '',
+        endTime: '',
+        reason: ''
       });
 
-      handleBreakDialogClose();
+      // Update local state
+      const newBreak: Break = {
+        ...breakData,
+        id: `break-${Date.now()}` // Generate a temporary ID
+      };
+
+      const updatedStylists = stylists.map(stylist => 
+        stylist.id === selectedStylist.id 
+          ? { ...stylist, breaks: [...stylist.breaks, newBreak] }
+          : stylist
+      );
+      
+      setStylists(updatedStylists);
+      setSelectedStylist({ ...selectedStylist, breaks: [...selectedStylist.breaks, newBreak] });
+      
+      setSnackbarMessage('Break added successfully');
+      setSnackbarOpen(true);
     } catch (error) {
-      console.error('Failed to add break:', error);
+      console.error('Error adding break:', error);
       setSnackbarMessage('Failed to add break');
       setSnackbarOpen(true);
     }
+  };
+
+  const handleDeleteBreak = (index: number) => {
+    if (!selectedStylist || !selectedStylist.breaks) return;
+    
+    const updatedBreaks = [...selectedStylist.breaks];
+    updatedBreaks.splice(index, 1);
+    
+    const updatedStylists = stylists.map(stylist => 
+      stylist.id === selectedStylist.id 
+        ? { ...stylist, breaks: updatedBreaks }
+        : stylist
+    );
+    
+    setStylists(updatedStylists);
+    setSelectedStylist({ ...selectedStylist, breaks: updatedBreaks });
+    setSnackbarMessage('Break time removed successfully');
+    setSnackbarOpen(true);
   };
 
   const BreakBlock = styled(Box)(({ theme }) => ({
@@ -1008,6 +1054,24 @@ export default function StylistDayView({
         onDateChange(date);
       }
       handleDatePickerClose();
+    }
+  };
+
+  useEffect(() => {
+    setStylists(initialStylists);
+  }, [initialStylists]);
+
+  useEffect(() => {
+    if (onStylistsChange) {
+      onStylistsChange(stylists);
+    }
+  }, [stylists, onStylistsChange]);
+
+  const handleStylistClick = (stylistId: string) => {
+    const foundStylist = stylists.find(s => s.id === stylistId);
+    if (foundStylist) {
+      setSelectedStylist(foundStylist);
+      setBreakDialogOpen(true);
     }
   };
 
@@ -1423,58 +1487,124 @@ export default function StylistDayView({
       </Dialog>
 
       {/* Break Dialog */}
-      <Dialog open={breakDialogOpen} onClose={handleBreakDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Break Time</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Start Time</InputLabel>
-                <Select
-                  value={breakFormData.startTime}
-                  onChange={(e) => setBreakFormData({ ...breakFormData, startTime: e.target.value as string })}
-                  label="Start Time"
+      <Dialog open={breakDialogOpen} onClose={handleBreakDialogClose} maxWidth="md" fullWidth>
+        <DialogTitle>Manage Break Time</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+              Add New Break
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Start Time</InputLabel>
+                  <Select
+                    value={breakFormData.startTime}
+                    onChange={(e) => setBreakFormData({ ...breakFormData, startTime: e.target.value as string })}
+                    label="Start Time"
+                  >
+                    {timeOptions.map((option) => (
+                      <MenuItem key={`break-start-${option.value}`} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>End Time</InputLabel>
+                  <Select
+                    value={breakFormData.endTime}
+                    onChange={(e) => setBreakFormData({ ...breakFormData, endTime: e.target.value as string })}
+                    label="End Time"
+                  >
+                    {timeOptions.map((option) => (
+                      <MenuItem key={`break-end-${option.value}`} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Reason"
+                  value={breakFormData.reason}
+                  onChange={(e) => setBreakFormData({ ...breakFormData, reason: e.target.value })}
+                  fullWidth
+                  placeholder="Optional: Enter reason for break"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Button 
+                  onClick={handleAddBreak} 
+                  variant="contained" 
+                  color="primary" 
+                  fullWidth
+                  sx={{ mt: 1 }}
                 >
-                  {timeOptions.map((option) => (
-                    <MenuItem key={`break-start-${option.value}`} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  Add Break
+                </Button>
+              </Grid>
             </Grid>
-            <Grid item xs={6}>
-              <FormControl fullWidth required>
-                <InputLabel>End Time</InputLabel>
-                <Select
-                  value={breakFormData.endTime}
-                  onChange={(e) => setBreakFormData({ ...breakFormData, endTime: e.target.value as string })}
-                  label="End Time"
-                >
-                  {timeOptions.map((option) => (
-                    <MenuItem key={`break-end-${option.value}`} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Reason"
-                value={breakFormData.reason}
-                onChange={(e) => setBreakFormData({ ...breakFormData, reason: e.target.value })}
-                fullWidth
-                placeholder="Optional: Enter reason for break"
-              />
-            </Grid>
-          </Grid>
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Box>
+            <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+              Existing Breaks
+            </Typography>
+            {selectedStylist && selectedStylist.breaks && selectedStylist.breaks.length > 0 ? (
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Start Time</TableCell>
+                      <TableCell>End Time</TableCell>
+                      <TableCell>Reason</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedStylist.breaks.map((breakItem: Break, index: number) => (
+                      <TableRow key={index} hover>
+                        <TableCell>{formatTime(breakItem.startTime)}</TableCell>
+                        <TableCell>{formatTime(breakItem.endTime)}</TableCell>
+                        <TableCell>{breakItem.reason || '-'}</TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteBreak(index)}
+                            title="Delete break"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Paper 
+                variant="outlined" 
+                sx={{ 
+                  p: 2, 
+                  textAlign: 'center',
+                  color: 'text.secondary',
+                  bgcolor: 'grey.50'
+                }}
+              >
+                <Typography>No breaks scheduled</Typography>
+              </Paper>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleBreakDialogClose}>Cancel</Button>
-          <Button onClick={handleAddBreak} variant="contained" color="primary">
-            Add Break
-          </Button>
+          <Button onClick={handleBreakDialogClose}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -1490,4 +1620,6 @@ export default function StylistDayView({
       </Snackbar>
     </DayViewContainer>
   );
-} 
+}
+
+export default StylistDayView; 
