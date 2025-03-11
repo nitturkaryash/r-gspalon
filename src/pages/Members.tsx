@@ -83,8 +83,8 @@ export default function Members() {
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
 
-  const handleAddMember = (memberData: Parameters<typeof createMember>[0]) => {
-    createMember(memberData);
+  const handleAddMember = (memberData: Omit<Member, 'id' | 'joinDate' | 'balance'>) => {
+    createMember({ ...memberData, balance: 0 });
     setIsAddingMember(false);
   };
 
