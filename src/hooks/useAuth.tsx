@@ -1,99 +1,110 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { LoginCredentials } from '../models/adminTypes';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+
+interface AuthUser {
+  id: string;
+  username: string;
+  role: string;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  user: AuthUser | null;
+  login: (credentials: { username: string; password: string }) => Promise<void>;
   logout: () => void;
-  user: { username: string } | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Hardcoded admin credentials - in a real app, these would be stored securely in a database
-const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123' // In production, use hashed passwords
-};
-
-// Authentication storage keys
 const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [user, setUser] = useState<{ username: string } | null>(null);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Initialize auth state from storage
   useEffect(() => {
-    const checkAuth = () => {
+    const initAuth = async () => {
       const token = localStorage.getItem(AUTH_TOKEN_KEY);
-      const storedUser = localStorage.getItem(AUTH_USER_KEY);
-      
-      if (token && storedUser) {
-        setIsAuthenticated(true);
+      const savedUser = localStorage.getItem(AUTH_USER_KEY);
+
+      if (token && savedUser) {
         try {
-          setUser(JSON.parse(storedUser));
-        } catch (e) {
-          // If parsing fails, clear invalid data
+          setUser(JSON.parse(savedUser));
+          setIsAuthenticated(true);
+        } catch (error) {
+          console.error('Auth initialization error:', error);
           localStorage.removeItem(AUTH_TOKEN_KEY);
           localStorage.removeItem(AUTH_USER_KEY);
-          setIsAuthenticated(false);
-          setUser(null);
-        }
-      } else {
-        setIsAuthenticated(false);
-        setUser(null);
-        
-        // Only redirect to login if not already there
-        if (location.pathname !== '/login') {
           navigate('/login', { replace: true });
         }
       }
     };
-    
-    checkAuth();
-  }, [navigate, location.pathname]);
 
-  const login = async (credentials: LoginCredentials) => {
-    // In a real app, this would be an API call to validate credentials
-    if (
-      credentials.username === ADMIN_CREDENTIALS.username &&
-      credentials.password === ADMIN_CREDENTIALS.password
-    ) {
-      // Create a mock token (in a real app, this would come from the server)
-      const mockToken = btoa(JSON.stringify({ username: credentials.username, time: new Date().getTime() }));
-      
+    initAuth();
+  }, [navigate]);
+
+  const login = async (credentials: { username: string; password: string }) => {
+    try {
+      // Query the auth table to verify credentials
+      const { data: user, error } = await supabase
+        .from('auth')
+        .select('id, username, role, password_hash')
+        .eq('username', credentials.username)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !user) {
+        console.error('Login error:', error);
+        throw new Error('Invalid credentials');
+      }
+
+      // Direct password comparison for testing
+      // In production, you should use proper password hashing
+      if (user.password_hash !== credentials.password) {
+        throw new Error('Invalid credentials');
+      }
+
+      // Update last login timestamp
+      await supabase
+        .from('auth')
+        .update({ last_login: new Date().toISOString() })
+        .eq('id', user.id);
+
+      const authUser: AuthUser = {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+      };
+
       // Store auth data
-      localStorage.setItem(AUTH_TOKEN_KEY, mockToken);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify({ username: credentials.username }));
+      localStorage.setItem(AUTH_TOKEN_KEY, 'dummy-token-' + Date.now());
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authUser));
       
-      // Update state
+      setUser(authUser);
       setIsAuthenticated(true);
-      setUser({ username: credentials.username });
-      
-      // Redirect to dashboard or intended page
+
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
-    } else {
+    } catch (error) {
+      console.error('Login error:', error);
       throw new Error('Invalid credentials');
     }
   };
 
-  const logout = () => {
-    // Clear auth data
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_USER_KEY);
-    
-    // Update state
-    setIsAuthenticated(false);
-    setUser(null);
-    
-    // Redirect to login
-    navigate('/login', { replace: true });
+  const logout = async () => {
+    try {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+      setUser(null);
+      setIsAuthenticated(false);
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (
