@@ -16,7 +16,7 @@ import { styled } from '@mui/material/styles';
 import { Member } from '../../types/member';
 
 interface AddMemberFormProps {
-  onAddMember: (newMember: Omit<Member, 'id' | 'joinDate' | 'balance'>) => void;
+  onAddMember: (newMember: Omit<Member, 'id' | 'joinDate'>) => void;
 }
 
 // Styled components for premium form
@@ -76,6 +76,8 @@ export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
     name: '',
     email: '',
     phone: '',
+    balance: 0,
+    membershipType: 'regular' as 'regular' | 'premium',
   });
   const [errors, setErrors] = useState({
     name: false,
@@ -102,7 +104,13 @@ export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
     e.preventDefault();
     if (validateForm()) {
       onAddMember(formData);
-      setFormData({ name: '', email: '', phone: '' });
+      setFormData({ 
+        name: '', 
+        email: '', 
+        phone: '', 
+        balance: 0,
+        membershipType: 'regular' 
+      });
     }
   };
 
@@ -180,7 +188,13 @@ export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
         <CancelButton
           variant="outlined"
           onClick={() => {
-            setFormData({ name: '', email: '', phone: '' });
+            setFormData({ 
+              name: '', 
+              email: '', 
+              phone: '', 
+              balance: 0,
+              membershipType: 'regular' 
+            });
             setErrors({ name: false, email: false, phone: false });
           }}
         >
