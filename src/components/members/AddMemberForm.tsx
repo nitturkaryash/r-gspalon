@@ -1,219 +1,198 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Box,
-  Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   TextField,
+  Button,
+  Grid,
   Typography,
-  Paper,
-  Divider,
-  FormHelperText
+  InputAdornment,
 } from '@mui/material';
-import { useClients } from '../../hooks/useClients';
+import {
+  Person as PersonIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+} from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
 import { Member } from '../../hooks/useMembers';
 
 interface AddMemberFormProps {
-  onSubmit: (newMember: Omit<Member, 'id' | 'joinDate'>) => void;
-  onCancel: () => void;
+  onAddMember: (newMember: Omit<Member, 'id' | 'joinDate' | 'balance'>) => void;
 }
 
-type FormMode = 'existing' | 'new';
+// Styled components for premium form
+const GoldTextField = styled(TextField)(({ theme }) => ({
+  '& .MuiOutlinedInput-root': {
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    color: 'white',
+    transition: 'all 0.3s',
+    '& fieldset': {
+      borderColor: 'rgba(255, 215, 0, 0.3)',
+    },
+    '&:hover fieldset': {
+      borderColor: 'rgba(255, 215, 0, 0.5)',
+    },
+    '&.Mui-focused fieldset': {
+      borderColor: '#FFD700',
+      borderWidth: 2,
+    },
+  },
+  '& .MuiInputLabel-root': {
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  '& .MuiInputLabel-root.Mui-focused': {
+    color: '#FFD700',
+  },
+  '& .MuiSvgIcon-root': {
+    color: 'rgba(255, 215, 0, 0.7)',
+  },
+}));
 
-export default function AddMemberForm({ onSubmit, onCancel }: AddMemberFormProps) {
-  const { clients, isLoading } = useClients();
-  const [mode, setMode] = useState<FormMode>('existing');
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [newMemberData, setNewMemberData] = useState({
+const GoldButton = styled(Button)(({ theme }) => ({
+  background: 'linear-gradient(45deg, #B8860B, #FFD700)',
+  color: theme.palette.common.black,
+  fontWeight: 'bold',
+  padding: theme.spacing(1.2, 2),
+  borderRadius: theme.shape.borderRadius,
+  transition: 'all 0.3s',
+  '&:hover': {
+    background: 'linear-gradient(45deg, #DAA520, #FFF8DC)',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3), 0 0 10px rgba(255, 215, 0, 0.3)',
+  },
+}));
+
+const CancelButton = styled(Button)(({ theme }) => ({
+  borderColor: 'rgba(255, 215, 0, 0.5)',
+  color: '#FFD700',
+  padding: theme.spacing(1.2, 2),
+  '&:hover': {
+    borderColor: '#FFD700',
+    backgroundColor: 'rgba(255, 215, 0, 0.08)',
+  },
+}));
+
+export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
+  const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
   });
-  const [initialBalance, setInitialBalance] = useState<string>('0');
-  const [formErrors, setFormErrors] = useState({
-    name: '',
-    initialBalance: ''
+  const [errors, setErrors] = useState({
+    name: false,
+    email: false,
+    phone: false,
   });
 
-  // Reset form when mode changes
-  useEffect(() => {
-    setSelectedClientId('');
-    setNewMemberData({
-      name: '',
-      email: '',
-      phone: '',
-    });
-    setInitialBalance('0');
-    setFormErrors({
-      name: '',
-      initialBalance: ''
-    });
-  }, [mode]);
-
   const validateForm = () => {
-    let isValid = true;
-    const errors = {
-      name: '',
-      initialBalance: ''
+    const newErrors = {
+      name: formData.name.trim() === '',
+      email: formData.email.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email),
+      phone: formData.phone.trim() !== '' && !/^[0-9]{10}$/.test(formData.phone.trim()),
     };
+    setErrors(newErrors);
+    return !Object.values(newErrors).some(Boolean);
+  };
 
-    // Validate based on mode
-    if (mode === 'existing' && !selectedClientId) {
-      errors.name = 'Please select a client';
-      isValid = false;
-    } else if (mode === 'new' && !newMemberData.name.trim()) {
-      errors.name = 'Name is required';
-      isValid = false;
-    }
-
-    // Validate initial balance
-    if (initialBalance) {
-      const balance = Number(initialBalance);
-      if (isNaN(balance) || balance < 0) {
-        errors.initialBalance = 'Please enter a valid amount';
-        isValid = false;
-      }
-    }
-
-    setFormErrors(errors);
-    return isValid;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
+    if (validateForm()) {
+      onAddMember(formData);
+      setFormData({ name: '', email: '', phone: '' });
     }
-
-    let memberData: Omit<Member, 'id' | 'joinDate'>;
-
-    if (mode === 'existing') {
-      const selectedClient = clients?.find(client => client.id === selectedClientId);
-      if (!selectedClient) return;
-
-      memberData = {
-        name: selectedClient.full_name,
-        email: selectedClient.email || '',
-        phone: selectedClient.phone || '',
-        balance: parseInt(initialBalance) || 0
-      };
-    } else {
-      memberData = {
-        ...newMemberData,
-        balance: parseInt(initialBalance) || 0
-      };
-    }
-
-    onSubmit(memberData);
   };
 
   return (
-    <Paper 
-      elevation={2} 
-      sx={{ 
-        p: 3, 
-        mb: 3, 
-        borderRadius: 2,
-        bgcolor: 'background.paper' 
-      }}
-    >
-      <Typography variant="h6" gutterBottom>
-        Add New Member
+    <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
+      <Typography 
+        variant="body2" 
+        sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.7)', fontStyle: 'italic' }}
+      >
+        All new members start with a ₹0 balance. They can top up their accounts after registration.
       </Typography>
-      <Divider sx={{ mb: 2 }} />
-
-      <form onSubmit={handleSubmit}>
-        <Box sx={{ mb: 2 }}>
-          <FormControl fullWidth>
-            <InputLabel id="member-mode-label">Membership Type</InputLabel>
-            <Select
-              labelId="member-mode-label"
-              value={mode}
-              onChange={(e) => setMode(e.target.value as FormMode)}
-              label="Membership Type"
-            >
-              <MenuItem value="existing">From Existing Client</MenuItem>
-              <MenuItem value="new">New Member</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-
-        {mode === 'existing' ? (
-          <Box sx={{ mb: 2 }}>
-            <FormControl fullWidth error={!!formErrors.name}>
-              <InputLabel id="client-select-label">Select Client</InputLabel>
-              <Select
-                labelId="client-select-label"
-                value={selectedClientId}
-                onChange={(e) => setSelectedClientId(e.target.value as string)}
-                label="Select Client"
-                disabled={isLoading || !clients?.length}
-              >
-                {clients?.map((client) => (
-                  <MenuItem key={client.id} value={client.id}>
-                    {client.full_name} {client.phone ? `(${client.phone})` : ''}
-                  </MenuItem>
-                ))}
-              </Select>
-              {formErrors.name && <FormHelperText>{formErrors.name}</FormHelperText>}
-            </FormControl>
-          </Box>
-        ) : (
-          <Box sx={{ mb: 2 }}>
-            <TextField
-              fullWidth
-              label="Name"
-              value={newMemberData.name}
-              onChange={(e) => setNewMemberData({ ...newMemberData, name: e.target.value })}
-              error={!!formErrors.name}
-              helperText={formErrors.name}
-              required
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={newMemberData.email}
-              onChange={(e) => setNewMemberData({ ...newMemberData, email: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              label="Phone"
-              value={newMemberData.phone}
-              onChange={(e) => setNewMemberData({ ...newMemberData, phone: e.target.value })}
-            />
-          </Box>
-        )}
-
-        <Box sx={{ mb: 3 }}>
-          <TextField
+      
+      <Grid container spacing={2}>
+        <Grid item xs={12}>
+          <GoldTextField
+            required
             fullWidth
-            label="Initial Balance"
-            type="number"
-            value={initialBalance}
-            onChange={(e) => setInitialBalance(e.target.value)}
+            id="name"
+            name="name"
+            label="Member Name"
+            value={formData.name}
+            onChange={handleChange}
+            error={errors.name}
+            helperText={errors.name ? 'Name is required' : ''}
             InputProps={{
-              startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PersonIcon />
+                </InputAdornment>
+              ),
             }}
-            error={!!formErrors.initialBalance}
-            helperText={formErrors.initialBalance || 'Optional: Set an initial balance amount'}
           />
-        </Box>
+        </Grid>
+        <Grid item xs={12}>
+          <GoldTextField
+            fullWidth
+            id="email"
+            name="email"
+            label="Email Address"
+            value={formData.email}
+            onChange={handleChange}
+            error={errors.email}
+            helperText={errors.email ? 'Please enter a valid email address' : ''}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <EmailIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+        <Grid item xs={12}>
+          <GoldTextField
+            fullWidth
+            id="phone"
+            name="phone"
+            label="Phone Number"
+            value={formData.phone}
+            onChange={handleChange}
+            error={errors.phone}
+            helperText={errors.phone ? 'Please enter a 10-digit phone number' : ''}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PhoneIcon />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+      </Grid>
 
-        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-          <Button variant="outlined" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="contained" color="primary">
-            Add Member
-          </Button>
-        </Box>
-      </form>
-    </Paper>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3, gap: 2 }}>
+        <CancelButton
+          variant="outlined"
+          onClick={() => {
+            setFormData({ name: '', email: '', phone: '' });
+            setErrors({ name: false, email: false, phone: false });
+          }}
+        >
+          Clear
+        </CancelButton>
+        <GoldButton
+          type="submit"
+          variant="contained"
+        >
+          Add Member
+        </GoldButton>
+      </Box>
+    </Box>
   );
 } 

@@ -10,16 +10,78 @@ import {
   Card,
   CardContent,
   CardHeader,
-  Divider
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Stack
 } from '@mui/material';
-import { Add as AddIcon, Group as GroupIcon } from '@mui/icons-material';
+import { Add as AddIcon, Group as GroupIcon, Close as CloseIcon } from '@mui/icons-material';
 import { useMembers } from '../hooks/useMembers';
 import MemberCard from '../components/members/MemberCard';
 import AddMemberForm from '../components/members/AddMemberForm';
+import { styled } from '@mui/material/styles';
+import EmptyState from '../components/EmptyState';
+
+// Styled components for premium membership section
+const PremiumSection = styled(Paper)(({ theme }) => ({
+  background: 'linear-gradient(to bottom, #111111, #000000)',
+  color: theme.palette.common.white,
+  padding: theme.spacing(4),
+  marginBottom: theme.spacing(4),
+  borderRadius: theme.shape.borderRadius * 2,
+  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+  position: 'relative',
+  overflow: 'hidden',
+}));
+
+const GlowOverlay = styled(Box)(() => ({
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: 'radial-gradient(circle at 30% 30%, rgba(255, 215, 0, 0.15), transparent 70%)',
+  pointerEvents: 'none',
+}));
+
+const PremiumTitle = styled(Typography)(({ theme }) => ({
+  fontWeight: 'bold',
+  marginBottom: theme.spacing(1),
+  color: '#FFD700',
+  textShadow: '0 0 10px rgba(255, 215, 0, 0.3)',
+}));
+
+const StatsBox = styled(Box)(({ theme }) => ({
+  background: 'rgba(255, 255, 255, 0.05)',
+  padding: theme.spacing(2),
+  borderRadius: theme.shape.borderRadius,
+  backdropFilter: 'blur(5px)',
+  border: '1px solid rgba(255, 215, 0, 0.2)',
+}));
+
+const BlackContainer = styled(Box)(({ theme }) => ({
+  background: '#121212',
+  borderRadius: theme.shape.borderRadius * 2,
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(4),
+}));
+
+const AddButton = styled(Button)(({ theme }) => ({
+  background: 'linear-gradient(45deg, #B8860B, #FFD700)',
+  color: theme.palette.common.black,
+  fontWeight: 'bold',
+  '&:hover': {
+    background: 'linear-gradient(45deg, #DAA520, #FFF8DC)',
+  },
+}));
 
 export default function Members() {
   const { members, isLoading, createMember, topUpMember, deleteMember, formatCurrency } = useMembers();
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [openDialog, setOpenDialog] = useState(false);
 
   const handleAddMember = (memberData: Parameters<typeof createMember>[0]) => {
     createMember(memberData);
@@ -41,111 +103,88 @@ export default function Members() {
   }
 
   return (
-    <Container maxWidth="xl">
-      <Box sx={{ py: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <GroupIcon sx={{ fontSize: 28, mr: 1, color: 'primary.main' }} />
-            <Typography variant="h1">Members</Typography>
-          </Box>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setIsAddingMember(true)}
-          >
-            Add Member
-          </Button>
-        </Box>
-
-        {isAddingMember && (
-          <AddMemberForm 
-            onSubmit={handleAddMember} 
-            onCancel={() => setIsAddingMember(false)} 
-          />
-        )}
-
-        {members.length === 0 ? (
-          <Paper 
-            elevation={1} 
-            sx={{ 
-              p: 4, 
-              textAlign: 'center',
-              borderRadius: 2,
-              bgcolor: 'background.paper'
-            }}
-          >
-            <GroupIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2, opacity: 0.3 }} />
-            <Typography variant="h6" color="text.secondary" gutterBottom>
-              No Members Yet
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3, maxWidth: 500, mx: 'auto' }}>
-              Start adding members to track their accounts and manage membership benefits.
-            </Typography>
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />}
-              onClick={() => setIsAddingMember(true)}
-            >
-              Add Your First Member
-            </Button>
-          </Paper>
-        ) : (
-          <Box>
-            <Box sx={{ mb: 4 }}>
-              <Card elevation={1}>
-                <CardHeader 
-                  title="Membership Overview" 
-                  sx={{ bgcolor: 'primary.light', color: 'primary.contrastText' }}
-                />
-                <Divider />
-                <CardContent>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} sm={4}>
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Total Members
-                      </Typography>
-                      <Typography variant="h4">{members.length}</Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Total Balance
-                      </Typography>
-                      <Typography variant="h4">
-                        {formatCurrency(members.reduce((sum, member) => sum + member.balance, 0))}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Average Balance
-                      </Typography>
-                      <Typography variant="h4">
-                        {formatCurrency(
-                          members.length > 0
-                            ? members.reduce((sum, member) => sum + member.balance, 0) / members.length
-                            : 0
-                        )}
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <PremiumSection>
+        <GlowOverlay />
+        <Box sx={{ position: 'relative', zIndex: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+            <Box>
+              <PremiumTitle variant="h4">Membership Management</PremiumTitle>
+              <Typography variant="body1" sx={{ opacity: 0.8 }}>
+                Manage your premium salon members and loyalty balances
+              </Typography>
             </Box>
-
-            <Grid container spacing={3}>
-              {members.map((member) => (
-                <Grid item xs={12} sm={6} md={4} key={member.id}>
-                  <MemberCard 
-                    member={member} 
-                    onTopUp={topUpMember}
-                    onDelete={handleDeleteMember}
-                    formatCurrency={formatCurrency}
-                  />
-                </Grid>
-              ))}
-            </Grid>
+            <AddButton
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setOpenDialog(true)}
+              size="large"
+            >
+              Add Member
+            </AddButton>
           </Box>
-        )}
-      </Box>
+
+          {members.length > 0 ? (
+            <BlackContainer>
+              <Grid container spacing={3}>
+                {members.map((member) => (
+                  <Grid item xs={12} sm={6} md={4} key={member.id}>
+                    <MemberCard 
+                      member={member} 
+                      onTopUp={topUpMember}
+                      onDelete={handleDeleteMember}
+                      formatCurrency={formatCurrency}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            </BlackContainer>
+          ) : (
+            <EmptyState
+              title="No Members Found"
+              description="Add your first premium member to start tracking loyalty balances"
+              buttonText="Add Member"
+              buttonAction={() => setOpenDialog(true)}
+              icon={<AddIcon sx={{ fontSize: 60 }} />}
+            />
+          )}
+        </Box>
+      </PremiumSection>
+
+      <Dialog 
+        open={openDialog} 
+        onClose={() => setOpenDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            background: 'linear-gradient(to bottom, #1a1a1a, #000000)',
+            color: 'white',
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          pb: 1, 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          color: '#FFD700',
+          fontWeight: 'bold',
+        }}>
+          Add New Member
+          <IconButton 
+            edge="end" 
+            onClick={() => setOpenDialog(false)}
+            sx={{ color: 'white' }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <AddMemberForm onAddMember={handleAddMember} />
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 } 
