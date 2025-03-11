@@ -25,9 +25,6 @@ import {
   CircularProgress,
   Autocomplete,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
 } from '@mui/material'
 import {
   PersonAdd as PersonAddIcon,
@@ -37,17 +34,10 @@ import {
   Palette,
   Spa,
   Face,
-  Add as AddIcon,
-  AccessTime as AccessTimeIcon,
 } from '@mui/icons-material'
-import { useStylists, Stylist, StylistBreak } from '../hooks/useStylists'
+import { useStylists, Stylist } from '../hooks/useStylists'
 import { useServices } from '../hooks/useServices'
 import { toast } from 'react-toastify'
-import { DatePicker, TimePicker } from '@mui/x-date-pickers'
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
-import { format } from 'date-fns'
-import { v4 as uuidv4 } from 'uuid'
 
 // Default avatar image
 const DEFAULT_AVATAR = 'https://ui-avatars.com/api/?name=Stylist&background=6B8E23&color=fff&size=150'
@@ -82,28 +72,12 @@ const initialFormData: StylistFormData = {
   breaks: []
 }
 
-// Add a debug function to log break dates
-const debugBreakDate = (label: string, date: Date | null) => {
-  if (date) {
-    console.log(`${label}: ${date.toISOString()}`);
-  } else {
-    console.log(`${label}: null`);
-  }
-};
-
 export default function Stylists() {
   const { stylists, isLoading, createStylist, updateStylist, deleteStylist } = useStylists()
   const { services } = useServices()
   const [open, setOpen] = useState(false)
   const [formData, setFormData] = useState<StylistFormData>(initialFormData)
   const [editingId, setEditingId] = useState<string | null>(null)
-  
-  // Break scheduling state - initialize with null instead of default dates
-  const [breakDialogOpen, setBreakDialogOpen] = useState(false)
-  const [breakDate, setBreakDate] = useState<Date | null>(null)
-  const [breakStartTime, setBreakStartTime] = useState<Date | null>(null)
-  const [breakEndTime, setBreakEndTime] = useState<Date | null>(null)
-  const [breakReason, setBreakReason] = useState('')
 
   const handleOpen = () => setOpen(true)
   
@@ -144,142 +118,6 @@ export default function Stylists() {
     
     handleClose()
   }
-
-  // Add functions to handle break scheduling
-  const handleOpenBreakDialog = () => {
-    // Initialize with current date when opening the dialog
-    const now = new Date();
-    setBreakDate(now);
-    
-    // Set default start time (current hour)
-    const startTime = new Date();
-    setBreakStartTime(startTime);
-    
-    // Set default end time (current hour + 1)
-    const endTime = new Date();
-    endTime.setHours(endTime.getHours() + 1);
-    setBreakEndTime(endTime);
-    
-    setBreakDialogOpen(true);
-  }
-
-  const handleCloseBreakDialog = () => {
-    setBreakDialogOpen(false);
-    // Reset break form data
-    setBreakDate(null);
-    setBreakStartTime(null);
-    setBreakEndTime(null);
-    setBreakReason('');
-  }
-
-  const handleAddBreak = () => {
-    if (!breakDate || !breakStartTime || !breakEndTime) {
-      toast.error('Please select date and time for the break');
-      return;
-    }
-
-    // Debug the input dates
-    debugBreakDate('Break Date', breakDate);
-    debugBreakDate('Break Start Time', breakStartTime);
-    debugBreakDate('Break End Time', breakEndTime);
-
-    try {
-      // Create a new Date object for the break date to ensure we're not modifying the original
-      // Use the full date constructor to avoid timezone issues
-      const breakDateClone = new Date(
-        breakDate.getFullYear(),
-        breakDate.getMonth(),
-        breakDate.getDate(),
-        0, 0, 0, 0
-      );
-      
-      debugBreakDate('Break Date Clone', breakDateClone);
-
-      // Create start date by properly cloning the date first
-      const startDateTime = new Date(breakDateClone);
-      startDateTime.setHours(
-        breakStartTime.getHours(),
-        breakStartTime.getMinutes(),
-        0,
-        0
-      );
-      
-      debugBreakDate('Start Date Time', startDateTime);
-
-      // Create end date by properly cloning the date first
-      const endDateTime = new Date(breakDateClone);
-      endDateTime.setHours(
-        breakEndTime.getHours(),
-        breakEndTime.getMinutes(),
-        0,
-        0
-      );
-      
-      debugBreakDate('End Date Time', endDateTime);
-
-      // Validate end time is after start time
-      if (endDateTime <= startDateTime) {
-        toast.error('End time must be after start time');
-        return;
-      }
-
-      // Create new break with explicit ISO strings
-      const newBreak: StylistBreak = {
-        id: uuidv4(),
-        startTime: startDateTime.toISOString(),
-        endTime: endDateTime.toISOString(),
-        reason: breakReason
-      };
-      
-      console.log('New Break:', newBreak);
-
-      // Update form data with the new break
-      const updatedBreaks = [...(formData.breaks || []), newBreak];
-      console.log('Updated Breaks:', updatedBreaks);
-      
-      setFormData({
-        ...formData,
-        breaks: updatedBreaks
-      });
-
-      handleCloseBreakDialog();
-      toast.success('Break scheduled');
-    } catch (error) {
-      console.error('Error creating break:', error);
-      toast.error('Failed to create break. Please try again.');
-    }
-  };
-
-  const handleDeleteBreak = (breakId: string) => {
-    setFormData({
-      ...formData,
-      breaks: (formData.breaks || []).filter(b => b.id !== breakId)
-    })
-    toast.success('Break removed')
-  }
-
-  // Format date and time for display
-  const formatBreakTime = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        console.error('Invalid date string:', dateString);
-        return 'Invalid date';
-      }
-      return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return 'Error formatting date';
-    }
-  };
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this stylist?')) {
@@ -528,60 +366,6 @@ export default function Stylists() {
                   label="Available for appointments"
                 />
               </Grid>
-              
-              {/* Scheduled Breaks Section */}
-              <Grid item xs={12}>
-                <Divider sx={{ my: 2 }} />
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6">Scheduled Breaks</Typography>
-                  <Button 
-                    variant="outlined" 
-                    startIcon={<AddIcon />}
-                    onClick={handleOpenBreakDialog}
-                    size="small"
-                  >
-                    Add Break
-                  </Button>
-                </Box>
-                
-                {formData.breaks && formData.breaks.length > 0 ? (
-                  <List>
-                    {formData.breaks.map((breakItem) => (
-                      <ListItem 
-                        key={breakItem.id}
-                        secondaryAction={
-                          <IconButton 
-                            edge="end" 
-                            aria-label="delete" 
-                            onClick={() => handleDeleteBreak(breakItem.id)}
-                            color="error"
-                            size="small"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        }
-                        sx={{ bgcolor: 'background.paper', mb: 1, borderRadius: 1 }}
-                      >
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <AccessTimeIcon fontSize="small" sx={{ mr: 1 }} />
-                              <Typography variant="body2">
-                                {formatBreakTime(breakItem.startTime)} - {formatBreakTime(breakItem.endTime)}
-                              </Typography>
-                            </Box>
-                          }
-                          secondary={breakItem.reason || 'No reason provided'}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No breaks scheduled. Add breaks when the stylist will be unavailable.
-                  </Typography>
-                )}
-              </Grid>
             </Grid>
           </DialogContent>
           <DialogActions>
@@ -592,58 +376,6 @@ export default function Stylists() {
           </DialogActions>
         </form>
       </Dialog>
-      
-      {/* Add Break Dialog */}
-      <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Dialog open={breakDialogOpen} onClose={handleCloseBreakDialog} maxWidth="sm" fullWidth>
-          <DialogTitle>Schedule Break</DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 0.5 }}>
-              <Grid item xs={12}>
-                <DatePicker
-                  label="Break Date"
-                  value={breakDate}
-                  onChange={(newDate) => setBreakDate(newDate)}
-                  slotProps={{ textField: { fullWidth: true, required: true } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TimePicker
-                  label="Start Time"
-                  value={breakStartTime}
-                  onChange={(newTime) => setBreakStartTime(newTime)}
-                  slotProps={{ textField: { fullWidth: true, required: true } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TimePicker
-                  label="End Time"
-                  value={breakEndTime}
-                  onChange={(newTime) => setBreakEndTime(newTime)}
-                  slotProps={{ textField: { fullWidth: true, required: true } }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Reason (Optional)"
-                  value={breakReason}
-                  onChange={(e) => setBreakReason(e.target.value)}
-                  fullWidth
-                  multiline
-                  rows={2}
-                  placeholder="Lunch, Meeting, etc."
-                />
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseBreakDialog}>Cancel</Button>
-            <Button onClick={handleAddBreak} variant="contained" color="primary">
-              Add Break
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </LocalizationProvider>
     </Box>
   )
 } 
