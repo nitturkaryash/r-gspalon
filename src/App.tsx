@@ -14,6 +14,7 @@ import Inventory from './pages/Inventory'
 import CollectionDetail from './pages/CollectionDetail'
 import ServiceCollections from './pages/ServiceCollections'
 import ServiceCollectionDetail from './pages/ServiceCollectionDetail'
+import Members from './pages/Members'
 
 // Lazy load larger pages
 const Appointments = lazy(() => import('./pages/Appointments'));
@@ -45,6 +46,7 @@ function App() {
             <Route path="/pos" element={<POS />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inventory/:id" element={<CollectionDetail />} />
+            <Route path="/members" element={<Members />} />
           </Routes>
         </Suspense>
       </Layout>

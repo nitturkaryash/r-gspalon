@@ -28,6 +28,7 @@ import {
   ChevronLeft,
   Storefront,
   Category,
+  CardMembership,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
@@ -55,6 +56,7 @@ const menuLinks: MenuLink[] = [
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
   { text: 'Inventory', path: '/inventory', icon: <Storefront /> },
+  { text: 'Members', path: '/members', icon: <CardMembership /> },
 ]
 
 const ListItemStyled = styled(ListItem)(({ theme }) => ({
