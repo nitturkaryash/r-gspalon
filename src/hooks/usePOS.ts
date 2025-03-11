@@ -16,6 +16,15 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   bnpl: 'Buy Now Pay Later',
 }
 
+// Interface for payment details - used for split payments
+export interface PaymentDetail {
+  id: string;
+  amount: number;
+  payment_method: PaymentMethod;
+  payment_date: string;
+  payment_note?: string;
+}
+
 // Mock data
 const mockUnpaidAppointments = [
   {
@@ -79,6 +88,9 @@ interface CreateOrderData {
   discount: number
   appointment_time?: string
   is_walk_in: boolean
+  // New fields for split payment
+  payments?: PaymentDetail[]
+  pending_amount?: number
 }
 
 export interface Order {
@@ -102,6 +114,10 @@ export interface Order {
   appointment_time?: string
   appointment_id?: string
   is_walk_in: boolean
+  // Added for split payment functionality
+  payments: PaymentDetail[]
+  pending_amount: number
+  is_split_payment: boolean
 }
 
 const GST_RATE = 0.18 // 18% GST for salon services in India
@@ -130,7 +146,7 @@ export function usePOS() {
     },
   })
 
-  // Process payment for existing appointment
+  // Process payment for existing appointment with split payment support
   const processAppointmentPayment = useMutation({
     mutationFn: async (data: CreateOrderData) => {
       // Simulate network delay
@@ -146,6 +162,28 @@ export function usePOS() {
         throw new Error('Appointment not found')
       }
       
+      // Calculate payments and pending amount
+      const payments = data.payments || [];
+      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const pendingAmount = data.total - paidAmount;
+      const isSplitPayment = payments.length > 0;
+      
+      // Set order status based on payment
+      let orderStatus: 'completed' | 'pending' | 'cancelled' = 'completed';
+      if (pendingAmount > 0 || data.payment_method === 'bnpl') {
+        orderStatus = 'pending';
+      }
+      
+      // If no split payments provided, create a default payment
+      if (!isSplitPayment) {
+        payments.push({
+          id: uuidv4(),
+          amount: data.total,
+          payment_method: data.payment_method,
+          payment_date: new Date().toISOString(),
+        });
+      }
+      
       // Create order
       const order: Order = {
         id: uuidv4(),
@@ -159,20 +197,25 @@ export function usePOS() {
         tax: data.tax,
         discount: data.discount,
         payment_method: data.payment_method,
-        status: data.payment_method === 'bnpl' ? 'pending' : 'completed',
+        status: orderStatus,
         appointment_id: data.appointment_id,
         is_walk_in: false,
-        appointment_time: appointment.start_time
+        appointment_time: appointment.start_time,
+        payments: payments,
+        pending_amount: pendingAmount,
+        is_split_payment: isSplitPayment
       }
       
       // Add to orders
       mockOrders.push(order)
       saveOrdersToStorage(mockOrders)
       
-      // Remove from unpaid appointments
-      const index = mockUnpaidAppointments.findIndex(a => a.id === data.appointment_id)
-      if (index !== -1) {
-        mockUnpaidAppointments.splice(index, 1)
+      // Remove from unpaid appointments if fully paid
+      if (pendingAmount === 0) {
+        const index = mockUnpaidAppointments.findIndex(a => a.id === data.appointment_id)
+        if (index !== -1) {
+          mockUnpaidAppointments.splice(index, 1)
+        }
       }
       
       // Update product inventory if there are products in the order
@@ -193,8 +236,8 @@ export function usePOS() {
       // Update client spending data
       await updateClientFromOrder(
         data.client_name,
-        data.total,
-        data.payment_method,
+        paidAmount, // Only update with the paid amount
+        payments.length === 1 ? payments[0].payment_method : 'bnpl', // Use the first payment method or BNPL if multiple
         order.created_at
       );
       
@@ -213,7 +256,7 @@ export function usePOS() {
     },
   })
   
-  // Create a new walk-in order
+  // Create a new walk-in order with split payment support
   const createWalkInOrder = useMutation({
     mutationFn: async (data: CreateOrderData) => {
       // Simulate network delay
@@ -223,22 +266,47 @@ export function usePOS() {
       const stylistsData = queryClient.getQueryData<any[]>(['stylists']);
       const stylistName = stylistsData?.find(s => s.id === data.stylist_id)?.name || 'Unknown Stylist';
       
+      // Calculate payments and pending amount
+      const payments = data.payments || [];
+      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const pendingAmount = data.total - paidAmount;
+      const isSplitPayment = payments.length > 0;
+      
+      // Set order status based on payment
+      let orderStatus: 'completed' | 'pending' | 'cancelled' = 'completed';
+      if (pendingAmount > 0 || data.payment_method === 'bnpl') {
+        orderStatus = 'pending';
+      }
+      
+      // If no split payments provided, create a default payment
+      if (!isSplitPayment) {
+        payments.push({
+          id: uuidv4(),
+          amount: data.total,
+          payment_method: data.payment_method,
+          payment_date: new Date().toISOString(),
+        });
+      }
+      
       // Create order
       const order: Order = {
         id: uuidv4(),
         created_at: new Date().toISOString(),
         client_name: data.client_name,
         stylist_id: data.stylist_id,
-        stylist_name: stylistName, // Use the correct stylist name
+        stylist_name: stylistName,
         services: data.services,
         total: data.total,
         subtotal: data.subtotal,
         tax: data.tax,
         discount: data.discount,
-        payment_method: data.payment_method,
-        status: data.payment_method === 'bnpl' ? 'pending' : 'completed',
+        payment_method: data.payment_method, // Primary payment method
+        status: orderStatus,
         appointment_time: data.appointment_time,
-        is_walk_in: true
+        is_walk_in: true,
+        payments: payments,
+        pending_amount: pendingAmount,
+        is_split_payment: isSplitPayment
       }
       
       // Add to orders
@@ -263,8 +331,8 @@ export function usePOS() {
       // Update client spending data
       await updateClientFromOrder(
         data.client_name,
-        data.total,
-        data.payment_method,
+        paidAmount, // Only update with the paid amount
+        payments.length === 1 ? payments[0].payment_method : 'bnpl', // Use the first payment method or BNPL if multiple
         order.created_at
       );
       
@@ -281,6 +349,57 @@ export function usePOS() {
       console.error('Order error:', error)
     },
   })
+
+  // Add a new mutation to update an existing order with additional payment
+  const updateOrderPayment = useMutation({
+    mutationFn: async ({ orderId, paymentDetails }: { orderId: string, paymentDetails: PaymentDetail }) => {
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Find the order
+      const orderIndex = mockOrders.findIndex(order => order.id === orderId);
+      if (orderIndex === -1) {
+        throw new Error('Order not found');
+      }
+      
+      const order = mockOrders[orderIndex];
+      
+      // Add the new payment
+      const updatedOrder = {
+        ...order,
+        payments: [...order.payments, paymentDetails],
+        pending_amount: order.pending_amount - paymentDetails.amount,
+      };
+      
+      // Update order status if fully paid
+      if (updatedOrder.pending_amount <= 0) {
+        updatedOrder.status = 'completed';
+      }
+      
+      // Update the order in the mock data
+      mockOrders[orderIndex] = updatedOrder;
+      saveOrdersToStorage(mockOrders);
+      
+      // Update client spending data
+      await updateClientFromOrder(
+        order.client_name,
+        paymentDetails.amount,
+        paymentDetails.payment_method,
+        paymentDetails.payment_date
+      );
+      
+      return { success: true, order: updatedOrder };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      toast.success('Payment updated successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to update payment');
+      console.error('Payment update error:', error);
+    }
+  });
 
   const calculateTotal = (
     servicePrices: number[],
@@ -309,6 +428,7 @@ export function usePOS() {
     isLoading: loadingAppointments || loadingOrders,
     processAppointmentPayment: processAppointmentPayment.mutate,
     createWalkInOrder: createWalkInOrder.mutate,
+    updateOrderPayment: updateOrderPayment.mutate,
     calculateTotal,
   }
 } 

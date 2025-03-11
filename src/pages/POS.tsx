@@ -41,6 +41,10 @@ import {
   StepLabel,
   Alert,
   Snackbar,
+  Collapse,
+  Stack,
+  Switch,
+  FormControlLabel,
 } from '@mui/material'
 import { 
   Add as AddIcon, 
@@ -58,11 +62,15 @@ import {
   ContentCut as ContentCutIcon,
   Search as SearchIcon,
   ShoppingBasket as ShoppingBasketIcon,
+  DeleteOutlined,
+  CreditCard,
+  Payment,
+  MoneyOff,
 } from '@mui/icons-material'
 import { DatePicker, TimePicker } from '@mui/x-date-pickers'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
-import { usePOS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PaymentMethod } from '../hooks/usePOS'
+import { usePOS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PaymentMethod, PaymentDetail } from '../hooks/usePOS'
 import { useStylists } from '../hooks/useStylists'
 import { useServices } from '../hooks/useServices'
 import { useClients } from '../hooks/useClients'
@@ -71,6 +79,7 @@ import { useCollectionServices } from '../hooks/useCollectionServices'
 import { useCollections } from '../hooks/useCollections'
 import { formatCurrency } from '../utils/format'
 import { playCashRegisterSound } from '../assets/sounds/cash-register'
+import { toast } from 'react-toastify'
 
 // Tab interface for switching between appointment payments and walk-in sales
 interface TabPanelProps {
@@ -388,58 +397,127 @@ export default function POS() {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
+  // State for split payment
+  const [isSplitPayment, setIsSplitPayment] = useState(false);
+  const [splitPayments, setSplitPayments] = useState<PaymentDetail[]>([]);
+  const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
+  const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('cash');
+  const [pendingAmount, setPendingAmount] = useState<number>(0);
+
+  // Handle adding a new payment in split payment mode
+  const handleAddSplitPayment = () => {
+    if (newPaymentAmount <= 0 || newPaymentAmount > (total - getAmountPaid())) {
+      setSnackbarMessage('Invalid payment amount');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    const newPayment: PaymentDetail = {
+      id: (Math.random() * 1000000).toString(), // Temporary ID - will be replaced on server
+      amount: newPaymentAmount,
+      payment_method: newPaymentMethod,
+      payment_date: new Date().toISOString(),
+    };
+    
+    setSplitPayments([...splitPayments, newPayment]);
+    setNewPaymentAmount(0);
+  };
+  
+  // Remove a payment from the split payments list
+  const handleRemoveSplitPayment = (paymentId: string) => {
+    setSplitPayments(splitPayments.filter(payment => payment.id !== paymentId));
+  };
+  
+  // Calculate total amount already paid
+  const getAmountPaid = () => {
+    return splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  };
+  
+  // Reset split payment state when moving between steps
+  useEffect(() => {
+    if (activeStep !== 2) {
+      setIsSplitPayment(false);
+      setSplitPayments([]);
+      setNewPaymentAmount(0);
+    } else {
+      // When entering payment step, set pending amount to total
+      setPendingAmount(total);
+    }
+  }, [activeStep, total]);
+  
+  // Update pending amount when split payments change
+  useEffect(() => {
+    const amountPaid = getAmountPaid();
+    setPendingAmount(total - amountPaid);
+  }, [splitPayments, total]);
+
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
+    if (!isStepValid()) return;
+    
+    setProcessing(true);
+    
     try {
-      // Create array of services from order items
-      const services = orderItems.map(item => ({
+      // Prepare service items for the order
+      const serviceItemsForOrder = orderItems.map(item => ({
         service_id: item.service.id,
         service_name: item.service.name,
         price: item.customPrice || item.service.price,
-        type: item.type as 'service' | 'product'
+        type: item.type,
       }));
       
-      // Get only the prices
-      const servicePrices = services.map(service => service.price);
+      // Format appointment time if available
+      let formattedAppointmentTime: string | undefined = undefined;
+      if (appointmentDate && appointmentTime) {
+        const date = new Date(appointmentDate);
+        date.setHours(appointmentTime.getHours());
+        date.setMinutes(appointmentTime.getMinutes());
+        formattedAppointmentTime = date.toISOString();
+      }
       
-      // Calculate totals based on which services and products are being purchased
-      const { subtotal, tax, total } = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
-      
-      // Process the walk-in order
-      await createWalkInOrder({
+      // Create order data with or without split payment
+      const orderData: any = {
         client_name: customerName,
-        stylist_id: selectedStylist ? selectedStylist : '',
-        services,
-        total,
-        subtotal,
-        tax,
+        stylist_id: selectedStylist,
+        services: serviceItemsForOrder,
+        total: total,
+        subtotal: orderSubtotal,
+        tax: tax,
         discount: walkInDiscount,
         payment_method: walkInPaymentMethod,
-        is_walk_in: true
-      });
+        is_walk_in: true,
+        appointment_time: formattedAppointmentTime,
+        payments: isSplitPayment ? splitPayments : undefined,
+        pending_amount: isSplitPayment ? pendingAmount : 0,
+      };
+      
+      // Create order
+      const response = await createWalkInOrder(orderData);
+      
+      // Show success message and play sound
+      setSnackbarMessage('Order created successfully!');
+      setSnackbarOpen(true);
+      playCashRegisterSound();
       
       // Reset form
-      setCustomerName('');
-      setSelectedStylist('');
       setOrderItems([]);
+      setCustomerName('');
+      setSelectedClient(null);
+      setSelectedStylist('');
+      setAppointmentDate(null);
+      setAppointmentTime(null);
+      setActiveStep(0);
       setWalkInDiscount(0);
       setWalkInPaymentMethod('cash');
-      setAppointmentDate(new Date());
-      setAppointmentTime(new Date());
+      setIsSplitPayment(false);
+      setSplitPayments([]);
       
-      // Reset step
-      setActiveStep(0);
-      
-      // Show success message
-      setSnackbarMessage('Order created successfully');
-      setSnackbarOpen(true);
-      
-      // Play cash register sound
-      playCashRegisterSound();
     } catch (error) {
-      console.error('Order error:', error);
-      setSnackbarMessage('Failed to create order');
+      console.error('Error creating order:', error);
+      setSnackbarMessage('Error creating order. Please try again.');
       setSnackbarOpen(true);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -940,28 +1018,150 @@ export default function POS() {
                         Payment Method
                       </Typography>
                       
-                      <FormControl fullWidth sx={{ mb: 3 }}>
-                        <InputLabel>Payment Method</InputLabel>
-                        <Select
-                          value={walkInPaymentMethod}
-                          onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
-                          label="Payment Method"
-                        >
-                          {PAYMENT_METHODS.map((method) => (
-                            <MenuItem key={method} value={method}>
-                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                                {PAYMENT_METHOD_LABELS[method]}
-                              </Box>
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={isSplitPayment}
+                            onChange={(e) => setIsSplitPayment(e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label="Split Payment"
+                        sx={{ mb: 2 }}
+                      />
                       
-                      {walkInPaymentMethod === 'bnpl' && (
-                        <Alert severity="info" sx={{ mb: 3 }}>
-                          Buy Now Pay Later: The customer will need to pay the full amount later.
-                        </Alert>
+                      {isSplitPayment ? (
+                        // Split payment UI
+                        <Box>
+                          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                            <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                              Split Payment Details
+                            </Typography>
+                            
+                            <TableContainer sx={{ maxHeight: 200, mb: 2 }}>
+                              <Table size="small" stickyHeader>
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>Amount</TableCell>
+                                    <TableCell>Method</TableCell>
+                                    <TableCell align="right">Actions</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {splitPayments.map((payment) => (
+                                    <TableRow key={payment.id}>
+                                      <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                                      <TableCell>{PAYMENT_METHOD_LABELS[payment.payment_method]}</TableCell>
+                                      <TableCell align="right">
+                                        <IconButton 
+                                          size="small" 
+                                          onClick={() => handleRemoveSplitPayment(payment.id)}
+                                          aria-label="delete payment"
+                                        >
+                                          <DeleteOutlineIcon fontSize="small" />
+                                        </IconButton>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                  {splitPayments.length === 0 && (
+                                    <TableRow>
+                                      <TableCell colSpan={3} align="center">
+                                        <Typography variant="body2" color="text.secondary">
+                                          No payments added yet
+                                        </Typography>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                            
+                            <Box sx={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                              <TextField
+                                label="Amount"
+                                type="number"
+                                value={newPaymentAmount}
+                                onChange={(e) => setNewPaymentAmount(Number(e.target.value))}
+                                sx={{ minWidth: 120 }}
+                                InputProps={{
+                                  inputProps: { min: 1, max: pendingAmount },
+                                  startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                                }}
+                                helperText={`Max: ${formatCurrency(pendingAmount)}`}
+                              />
+                              
+                              <FormControl sx={{ minWidth: 150 }}>
+                                <InputLabel>Payment Method</InputLabel>
+                                <Select
+                                  value={newPaymentMethod}
+                                  onChange={(e) => setNewPaymentMethod(e.target.value as PaymentMethod)}
+                                  label="Payment Method"
+                                >
+                                  {PAYMENT_METHODS.map((method) => (
+                                    <MenuItem key={method} value={method}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                        <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                                        {PAYMENT_METHOD_LABELS[method]}
+                                      </Box>
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              
+                              <Button
+                                variant="contained"
+                                color="primary"
+                                startIcon={<AddIcon />}
+                                onClick={handleAddSplitPayment}
+                                disabled={newPaymentAmount <= 0 || newPaymentAmount > pendingAmount}
+                              >
+                                Add Payment
+                              </Button>
+                            </Box>
+                            
+                            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+                              <Typography>
+                                Amount Paid: <strong>{formatCurrency(getAmountPaid())}</strong>
+                              </Typography>
+                              <Typography>
+                                Pending: <strong>{formatCurrency(pendingAmount)}</strong>
+                              </Typography>
+                            </Box>
+                          </Paper>
+                          
+                          {pendingAmount > 0 && (
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                              The remaining amount of {formatCurrency(pendingAmount)} will be marked as pending and can be collected later.
+                            </Alert>
+                          )}
+                        </Box>
+                      ) : (
+                        // Standard payment UI
+                        <>
+                          <FormControl fullWidth sx={{ mb: 3 }}>
+                            <InputLabel>Payment Method</InputLabel>
+                            <Select
+                              value={walkInPaymentMethod}
+                              onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
+                              label="Payment Method"
+                            >
+                              {PAYMENT_METHODS.map((method) => (
+                                <MenuItem key={method} value={method}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                    <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                                    {PAYMENT_METHOD_LABELS[method]}
+                                  </Box>
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          
+                          {walkInPaymentMethod === 'bnpl' && (
+                            <Alert severity="info" sx={{ mb: 3 }}>
+                              Buy Now Pay Later: The customer will need to pay the full amount later.
+                            </Alert>
+                          )}
+                        </>
                       )}
                       
                       <TextField
