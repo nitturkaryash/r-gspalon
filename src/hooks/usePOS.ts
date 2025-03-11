@@ -401,26 +401,53 @@ export function usePOS() {
     }
   });
 
+  // Update GST calculation to support split payments
   const calculateTotal = (
     servicePrices: number[],
     discount: number = 0,
-    paymentMethod: PaymentMethod = 'upi'
+    paymentMethod: PaymentMethod = 'upi',
+    splitPayments?: PaymentDetail[]
   ) => {
-    const subtotal = servicePrices.reduce((sum, price) => sum + price, 0)
+    const subtotal = servicePrices.reduce((sum, price) => sum + price, 0);
     
-    // Apply GST only if payment method is not cash
-    const tax = paymentMethod === 'cash' 
-      ? 0 // No GST for cash payments
-      : Math.round(subtotal * GST_RATE) // Apply GST for other payment methods
-    
-    const total = subtotal + tax - discount
-
-    return {
-      subtotal: Math.round(subtotal), // Round to whole rupees
-      tax: tax,
-      total: Math.round(total), // Round to whole rupees
+    // If split payments are provided, calculate GST based on payment methods
+    if (splitPayments && splitPayments.length > 0) {
+      // Calculate GST only for non-cash payments
+      let tax = 0;
+      
+      // Sum all non-cash payment amounts
+      const nonCashPaymentTotal = splitPayments
+        .filter(payment => payment.payment_method !== 'cash')
+        .reduce((sum, payment) => sum + payment.amount, 0);
+      
+      // Calculate GST on non-cash payments
+      if (nonCashPaymentTotal > 0) {
+        // GST is 18% of the base amount, which is calculated as amount / 1.18
+        tax = Math.round(nonCashPaymentTotal * GST_RATE / (1 + GST_RATE));
+      }
+      
+      const total = subtotal - discount;
+      
+      return {
+        subtotal: Math.round(subtotal),
+        tax: tax,
+        total: Math.round(total),
+      };
+    } else {
+      // Apply GST only if payment method is not cash (original logic)
+      const tax = paymentMethod === 'cash' 
+        ? 0 // No GST for cash payments
+        : Math.round(subtotal * GST_RATE / (1 + GST_RATE)); // Apply GST for other payment methods
+      
+      const total = subtotal - discount;
+      
+      return {
+        subtotal: Math.round(subtotal),
+        tax: tax,
+        total: Math.round(total),
+      };
     }
-  }
+  };
 
   return {
     unpaidAppointments,
