@@ -24,6 +24,7 @@ import MemberCard from '../components/members/MemberCard';
 import AddMemberForm from '../components/members/AddMemberForm';
 import { styled } from '@mui/material/styles';
 import EmptyState from '../components/EmptyState';
+import { Member } from '../types/member';
 
 // Styled components for premium membership section
 const PremiumSection = styled(Paper)(({ theme }) => ({
@@ -83,8 +84,8 @@ export default function Members() {
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
 
-  const handleAddMember = (memberData: Omit<Member, 'id' | 'joinDate' | 'balance'>) => {
-    createMember({ ...memberData, balance: 0 });
+  const handleAddMember = (memberData: Omit<Member, 'id' | 'joinDate'>) => {
+    createMember(memberData);
     setIsAddingMember(false);
   };
 

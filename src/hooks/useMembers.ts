@@ -1,15 +1,7 @@
 import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'react-toastify';
-
-export interface Member {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  balance: number;
-  joinDate: string;
-}
+import { Member } from '../types/member';
 
 // Initial demo data for members
 const initialMembers: Member[] = [
@@ -19,7 +11,8 @@ const initialMembers: Member[] = [
     email: 'jane.doe@example.com',
     phone: '123-456-7890',
     balance: 50000,
-    joinDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days ago
+    joinDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    membershipType: 'premium'
   },
   {
     id: '2',
@@ -27,7 +20,8 @@ const initialMembers: Member[] = [
     email: 'john.smith@example.com',
     phone: '987-654-3210',
     balance: 75000,
-    joinDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString() // 15 days ago
+    joinDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+    membershipType: 'regular'
   }
 ];
 
@@ -36,10 +30,18 @@ const loadMembersFromStorage = (): Member[] => {
   try {
     const savedMembers = localStorage.getItem('members');
     if (savedMembers) {
-      return JSON.parse(savedMembers);
+      const parsedMembers = JSON.parse(savedMembers);
+      // Convert joinDate strings back to Date objects
+      return parsedMembers.map((member: any) => ({
+        ...member,
+        joinDate: new Date(member.joinDate)
+      }));
     }
     // If no members found in localStorage, save the initial ones
-    localStorage.setItem('members', JSON.stringify(initialMembers));
+    localStorage.setItem('members', JSON.stringify(initialMembers.map(member => ({
+      ...member,
+      joinDate: member.joinDate.toISOString()
+    }))));
     return initialMembers;
   } catch (error) {
     console.error('Error loading members from localStorage:', error);
@@ -50,7 +52,12 @@ const loadMembersFromStorage = (): Member[] => {
 // Save members to localStorage
 const saveMembersToStorage = (members: Member[]) => {
   try {
-    localStorage.setItem('members', JSON.stringify(members));
+    // Convert Date objects to ISO strings for storage
+    const membersToSave = members.map(member => ({
+      ...member,
+      joinDate: member.joinDate.toISOString()
+    }));
+    localStorage.setItem('members', JSON.stringify(membersToSave));
   } catch (error) {
     console.error('Error saving members to localStorage:', error);
   }
@@ -69,9 +76,9 @@ export function useMembers() {
 
   // Create a new member
   const createMember = (newMember: Omit<Member, 'id' | 'joinDate'>) => {
-    const member = {
+    const member: Member = {
       id: uuidv4(),
-      joinDate: new Date().toISOString(),
+      joinDate: new Date(),
       ...newMember
     };
 

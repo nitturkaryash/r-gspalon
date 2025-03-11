@@ -13,7 +13,7 @@ import {
   Phone as PhoneIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { Member } from '../../hooks/useMembers';
+import { Member } from '../../types/member';
 
 interface AddMemberFormProps {
   onAddMember: (newMember: Omit<Member, 'id' | 'joinDate' | 'balance'>) => void;
