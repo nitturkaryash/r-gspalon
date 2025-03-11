@@ -289,15 +289,26 @@ export default function POS() {
   // When using split payment, we need to calculate tax differently
   const { tax, total } = useMemo(() => {
     if (isSplitPayment && splitPayments.length > 0) {
-      // Calculate tax based on ALL payments including cash
-      const totalPaymentAmount = splitPayments
-        .reduce((sum, payment) => sum + payment.amount, 0);
+      // Check if we have a mix of cash and other payment methods
+      const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+      const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+      const hasMixedPayments = hasCash && hasNonCash;
       
-      // GST is calculated as 18% of the base amount (amount / 1.18)
-      const calculatedTax = Math.round(totalPaymentAmount * 0.18 / 1.18);
+      // Calculate total payment amount
+      const totalPaymentAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
       
-      // Calculate total from the orderSubtotal and tax, not from the split payment amounts
-      // This ensures the total is constant regardless of how payments are split
+      let calculatedTax = 0;
+      
+      if (hasMixedPayments) {
+        // If mix of cash and non-cash, apply GST to the total amount
+        calculatedTax = Math.round(totalPaymentAmount * 0.18 / 1.18);
+      } else if (hasNonCash) {
+        // If only non-cash payments, apply GST
+        calculatedTax = Math.round(totalPaymentAmount * 0.18 / 1.18);
+      }
+      // If only cash payments, tax remains 0
+      
+      // Calculate total from the orderSubtotal plus tax minus discount
       return {
         tax: calculatedTax,
         total: orderSubtotal + calculatedTax - walkInDiscount
@@ -1081,8 +1092,8 @@ export default function POS() {
                             {/* Show GST information at the top */}
                             <Alert severity="info" sx={{ mb: 2 }}>
                               <Typography variant="body2">
-                                GST (18%) will be applied to all payment methods including cash.
-                                Maximum 2 payment methods allowed.
+                                GST (18%) is applied to non-cash payment methods. When mixing cash with other payment methods, 
+                                GST will be applied to the complete amount. Maximum 2 payment methods allowed. No two payments of the same type allowed.
                               </Typography>
                             </Alert>
                             
@@ -1102,7 +1113,12 @@ export default function POS() {
                                       <TableCell>{formatCurrency(payment.amount)}</TableCell>
                                       <TableCell>{PAYMENT_METHOD_LABELS[payment.payment_method]}</TableCell>
                                       <TableCell>
-                                        <Typography>Yes</Typography>
+                                        {payment.payment_method === 'cash' && 
+                                         !splitPayments.some(p => p.payment_method !== 'cash') ? (
+                                          <Typography color="success.main">No</Typography>
+                                        ) : (
+                                          <Typography>Yes</Typography>
+                                        )}
                                       </TableCell>
                                       <TableCell align="right">
                                         <IconButton 
@@ -1151,14 +1167,30 @@ export default function POS() {
                                     onChange={(e) => setNewPaymentMethod(e.target.value as PaymentMethod)}
                                     label="Payment Method"
                                   >
-                                    {PAYMENT_METHODS.map((method) => (
-                                      <MenuItem key={method} value={method}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                          <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                                          {PAYMENT_METHOD_LABELS[method]}
-                                        </Box>
-                                      </MenuItem>
-                                    ))}
+                                    {PAYMENT_METHODS.map((method) => {
+                                      // If one payment method is already used and we're selecting for the second method,
+                                      // don't allow selecting the same method again
+                                      const isMethodAlreadyUsed = 
+                                        splitPayments.length === 1 && 
+                                        splitPayments[0].payment_method === method;
+                                        
+                                      return !isMethodAlreadyUsed ? (
+                                        <MenuItem key={method} value={method}>
+                                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                            <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                                            {PAYMENT_METHOD_LABELS[method]}
+                                            {method === 'cash' && (
+                                              <Chip 
+                                                size="small" 
+                                                label="No GST" 
+                                                color="success" 
+                                                sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                                              />
+                                            )}
+                                          </Box>
+                                        </MenuItem>
+                                      ) : null;
+                                    })}
                                   </Select>
                                 </FormControl>
                                 
@@ -1198,24 +1230,54 @@ export default function POS() {
                             </Typography>
                             
                             <Box sx={{ mb: 2 }}>
-                              {/* Calculate GST for all payments including cash */}
-                              {splitPayments.map((payment, index) => (
-                                <Box 
-                                  key={index} 
-                                  sx={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    mb: 1 
-                                  }}
-                                >
-                                  <Typography>
-                                    GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
-                                  </Typography>
-                                  <Typography>
-                                    {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
-                                  </Typography>
-                                </Box>
-                              ))}
+                              {/* Check if we have mixed payment methods (cash + non-cash) */}
+                              {(() => {
+                                const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+                                const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+                                const hasMixedPayments = hasCash && hasNonCash;
+                                
+                                // If mixed payments, show GST for all payments
+                                if (hasMixedPayments) {
+                                  return splitPayments.map((payment, index) => (
+                                    <Box 
+                                      key={index} 
+                                      sx={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        mb: 1 
+                                      }}
+                                    >
+                                      <Typography>
+                                        GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
+                                      </Typography>
+                                      <Typography>
+                                        {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
+                                      </Typography>
+                                    </Box>
+                                  ));
+                                } else {
+                                  // Otherwise only show GST for non-cash payments
+                                  return splitPayments
+                                    .filter(payment => payment.payment_method !== 'cash')
+                                    .map((payment, index) => (
+                                      <Box 
+                                        key={index} 
+                                        sx={{ 
+                                          display: 'flex', 
+                                          justifyContent: 'space-between', 
+                                          mb: 1 
+                                        }}
+                                      >
+                                        <Typography>
+                                          GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
+                                        </Typography>
+                                        <Typography>
+                                          {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
+                                        </Typography>
+                                      </Box>
+                                    ));
+                                }
+                              })()}
                               
                               {/* Show total GST */}
                               <Box sx={{ 
@@ -1227,13 +1289,24 @@ export default function POS() {
                               }}>
                                 <Typography fontWeight="medium">Total GST:</Typography>
                                 <Typography fontWeight="medium">
-                                  {formatCurrency(
-                                    splitPayments
-                                      .reduce((sum, payment) => sum + Math.round(payment.amount * 0.18 / 1.18), 0)
-                                  )}
+                                  {formatCurrency(tax)}
                                 </Typography>
                               </Box>
                             </Box>
+                            
+                            {/* Only show the cash exemption alert if there's no mixed payment */}
+                            {splitPayments.some(payment => payment.payment_method === 'cash') && 
+                            !splitPayments.some(payment => payment.payment_method !== 'cash') && (
+                              <Alert severity="success" sx={{ mb: 1 }}>
+                                <Typography variant="body2">
+                                  No GST applied to cash payments: {formatCurrency(
+                                    splitPayments
+                                      .filter(payment => payment.payment_method === 'cash')
+                                      .reduce((sum, payment) => sum + payment.amount, 0)
+                                  )}
+                                </Typography>
+                              </Alert>
+                            )}
                           </Paper>
                           
                           {pendingAmount > 0 && (
@@ -1267,6 +1340,20 @@ export default function POS() {
                             <Alert severity="info" sx={{ mb: 3 }}>
                               Buy Now Pay Later: The customer will need to pay the full amount later.
                             </Alert>
+                          )}
+                          
+                          {walkInPaymentMethod !== 'cash' && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>GST (18%):</Typography>
+                              <Typography>{formatCurrency(tax)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {walkInPaymentMethod === 'cash' && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography color="success.main">No GST (Cash Payment)</Typography>
+                              <Typography color="success.main">₹0</Typography>
+                            </Box>
                           )}
                         </>
                       )}
@@ -1472,11 +1559,11 @@ export default function POS() {
                     </Typography>
                   </Box>
                   
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                  <Divider sx={{ my: 1 }} />
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography variant="h6">Total:</Typography>
-                    <Typography variant="h6" color="primary">
-                      {formatCurrency(total)}
-                    </Typography>
+                    <Typography variant="h6" color="primary">{formatCurrency(total)}</Typography>
                   </Box>
                 </Box>
                 

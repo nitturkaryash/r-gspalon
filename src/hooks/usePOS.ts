@@ -412,18 +412,24 @@ export function usePOS() {
     
     // If split payments are provided, calculate GST based on payment methods
     if (splitPayments && splitPayments.length > 0) {
-      // Calculate GST for all payments
+      // Check if we have a mix of cash and other payment methods
+      const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+      const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+      const hasMixedPayments = hasCash && hasNonCash;
+      
+      // Calculate total payment amount
+      const totalPaymentAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      
       let tax = 0;
       
-      // Sum all payment amounts
-      const totalPaymentAmount = splitPayments
-        .reduce((sum, payment) => sum + payment.amount, 0);
-      
-      // Calculate GST on all payments
-      if (totalPaymentAmount > 0) {
-        // GST is 18% of the base amount, which is calculated as amount / 1.18
+      if (hasMixedPayments) {
+        // If mix of cash and non-cash, apply GST to the total amount
+        tax = Math.round(totalPaymentAmount * GST_RATE / (1 + GST_RATE));
+      } else if (hasNonCash) {
+        // If only non-cash payments, apply GST
         tax = Math.round(totalPaymentAmount * GST_RATE / (1 + GST_RATE));
       }
+      // If only cash payments, tax remains 0
       
       // Add tax to total calculation
       const total = subtotal + tax - discount;
@@ -434,8 +440,10 @@ export function usePOS() {
         total: Math.round(total),
       };
     } else {
-      // Apply GST to all payment methods including cash
-      const tax = Math.round(subtotal * GST_RATE / (1 + GST_RATE)); // Apply GST for all payment methods
+      // Apply GST only if payment method is not cash
+      const tax = paymentMethod === 'cash' 
+        ? 0 // No GST for cash payments
+        : Math.round(subtotal * GST_RATE / (1 + GST_RATE)); // Apply GST for other payment methods
       
       // Add tax to total calculation
       const total = subtotal + tax - discount;
