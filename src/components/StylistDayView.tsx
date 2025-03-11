@@ -265,7 +265,8 @@ const formatHour = (hour: number): string => {
   return `${hour12}:00 ${period}`;
 };
 
-interface Break extends StylistBreak {
+// Export the Break interface
+export interface Break extends StylistBreak {
   startTime: string;
   endTime: string;
   reason?: string;

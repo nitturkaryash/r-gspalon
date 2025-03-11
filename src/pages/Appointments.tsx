@@ -1,12 +1,42 @@
-import { useState } from 'react'
-import { Box, CircularProgress, Paper, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Grid, SelectChangeEvent, Alert, Snackbar } from '@mui/material'
+import { useState, useEffect } from 'react'
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  SelectChangeEvent,
+  Snackbar,
+  Alert,
+  CircularProgress,
+  InputAdornment,
+} from '@mui/material'
 import { useAppointments } from '../hooks/useAppointments'
-import { useServices } from '../hooks/useServices'
 import { useStylists, Stylist, StylistBreak } from '../hooks/useStylists'
-import StylistDayView from '../components/StylistDayView'
-import { DateSelectArg } from '@fullcalendar/core'
+import { useServices, Service } from '../hooks/useServices'
+import { useServiceCollections } from '../hooks/useServiceCollections'
+import { useCollectionServices } from '../hooks/useCollectionServices'
+import { ServiceItem } from '../models/serviceTypes'
+import { format, addDays, subDays } from 'date-fns'
+import StylistDayView, { Break } from '../components/StylistDayView'
+import { Search as SearchIcon } from '@mui/icons-material'
+import { formatCurrency } from '../utils/format'
 import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
+import FullCalendar from '@fullcalendar/react'
+import dayGridPlugin from '@fullcalendar/daygrid'
+import timeGridPlugin from '@fullcalendar/timegrid'
+import interactionPlugin from '@fullcalendar/interaction'
+import { DateSelectArg, EventClickArg } from '@fullcalendar/core'
 
 interface BookingFormData {
   clientName: string;
@@ -15,6 +45,7 @@ interface BookingFormData {
   startTime: string;
   endTime: string;
   notes?: string;
+  mobileNumber?: string;
 }
 
 // Generate time options for select dropdown
@@ -53,6 +84,12 @@ export default function Appointments() {
   const { appointments, isLoading: loadingAppointments, updateAppointment, createAppointment, deleteAppointment } = useAppointments()
   const { services, isLoading: loadingServices } = useServices()
   const { stylists, isLoading: loadingStylists, updateStylist } = useStylists()
+
+  // Add state for service filtering
+  const { serviceCollections } = useServiceCollections();
+  const { services: collectionServices, isLoading: isLoadingCollectionServices } = useCollectionServices();
+  const [selectedServiceCollection, setSelectedServiceCollection] = useState<string>('');
+  const [serviceSearchQuery, setServiceSearchQuery] = useState<string>('');
 
   const handleSelect = (selectInfo: DateSelectArg) => {
     console.log('Selected slot:', selectInfo);
@@ -213,6 +250,88 @@ export default function Appointments() {
     setSnackbarOpen(false);
   };
 
+  // Add a function to filter services based on collection and search query
+  const getFilteredServices = () => {
+    // Use collectionServices if available, otherwise fall back to services
+    const allServices = collectionServices || services || [];
+    
+    let filteredServices = [...allServices];
+    
+    // Filter by collection if one is selected
+    if (selectedServiceCollection) {
+      filteredServices = filteredServices.filter(service => {
+        // Check if service is from collection services (which has collection_id)
+        if ('collection_id' in service) {
+          return service.collection_id === selectedServiceCollection;
+        }
+        return false;
+      });
+    }
+    
+    // Filter by search query if one is entered
+    if (serviceSearchQuery) {
+      const query = serviceSearchQuery.toLowerCase();
+      filteredServices = filteredServices.filter(service => 
+        service.name.toLowerCase().includes(query) || 
+        (service.description && service.description.toLowerCase().includes(query))
+      );
+    }
+    
+    return filteredServices;
+  };
+
+  // Update the handleAddBreak function
+  const handleAddBreak = async (stylistId: string, breakData: Omit<Break, 'id'>) => {
+    try {
+      // Create a new break with a unique ID
+      const newBreak: StylistBreak = {
+        id: uuidv4(),
+        ...breakData
+      };
+      
+      // Find the stylist to update
+      if (!stylists) {
+        console.error('Stylists array is undefined');
+        toast.error('Failed to add break: Stylists not loaded');
+        return;
+      }
+      
+      const stylist = stylists.find(s => s.id === stylistId);
+      if (!stylist) {
+        console.error('Stylist not found:', stylistId);
+        toast.error('Failed to add break: Stylist not found');
+        return;
+      }
+      
+      // Update the stylist's breaks
+      const updatedBreaks = [...(stylist.breaks || []), newBreak];
+      const updatedStylist = { ...stylist, breaks: updatedBreaks };
+      
+      // Update the stylist in the database
+      await updateStylist(updatedStylist);
+      
+      toast.success('Break added successfully');
+    } catch (error) {
+      console.error('Failed to add break:', error);
+      toast.error('Failed to add break');
+    }
+  };
+
+  // Convert stylists to the expected format for StylistDayView
+  const convertStylists = (stylists: Stylist[]): any[] => {
+    return stylists.map(stylist => ({
+      ...stylist,
+      breaks: (stylist.breaks || []).map(breakItem => ({
+        ...breakItem,
+        // Ensure all required properties for Break type are present
+        id: breakItem.id,
+        startTime: breakItem.startTime,
+        endTime: breakItem.endTime,
+        reason: breakItem.reason || ''
+      }))
+    }));
+  };
+
   if (loadingAppointments || loadingServices || loadingStylists) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -224,7 +343,7 @@ export default function Appointments() {
   return (
     <Box sx={{ height: 'calc(100vh - 80px)', p: 2 }}>
       <StylistDayView
-        stylists={stylists || []}
+        stylists={convertStylists(stylists || [])}
         appointments={appointments || []}
         services={services || []}
         selectedDate={selectedDate}
@@ -239,7 +358,6 @@ export default function Appointments() {
           } catch (error) {
             console.error('Failed to update appointment:', error);
             toast.error('Failed to update appointment');
-            throw error;
           }
         }}
         onDeleteAppointment={async (appointmentId) => {
@@ -249,41 +367,9 @@ export default function Appointments() {
           } catch (error) {
             console.error('Failed to delete appointment:', error);
             toast.error('Failed to delete appointment');
-            throw error;
           }
         }}
-        onAddBreak={async (stylistId, breakData) => {
-          try {
-            // Find the stylist
-            const stylist = stylists?.find(s => s.id === stylistId);
-            if (!stylist) {
-              throw new Error('Stylist not found');
-            }
-            
-            // Create a new break with ID
-            const newBreak: StylistBreak = {
-              id: uuidv4(),
-              startTime: breakData.startTime,
-              endTime: breakData.endTime,
-              reason: breakData.reason
-            };
-            
-            // Add the break to the stylist's breaks array
-            const updatedBreaks = [...(stylist.breaks || []), newBreak];
-            
-            // Update the stylist with the new breaks
-            await updateStylist({
-              id: stylistId,
-              breaks: updatedBreaks
-            });
-            
-            toast.success('Break added successfully');
-          } catch (error) {
-            console.error('Failed to add break:', error);
-            toast.error('Failed to add break');
-            throw error;
-          }
-        }}
+        onAddBreak={handleAddBreak}
         onDateChange={(date) => {
           setSelectedDate(date);
         }}
@@ -312,6 +398,22 @@ export default function Appointments() {
               />
             </Grid>
             <Grid item xs={12}>
+              <TextField
+                label="Mobile Number"
+                value={formData.mobileNumber || ''}
+                onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
+                fullWidth
+                placeholder="Enter client's mobile number"
+                InputProps={{
+                  startAdornment: (
+                    <Box component="span" sx={{ color: 'text.secondary', mr: 1 }}>
+                      +
+                    </Box>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
               <FormControl fullWidth required>
                 <InputLabel>Stylist</InputLabel>
                 <Select
@@ -333,20 +435,101 @@ export default function Appointments() {
               </FormControl>
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth required>
-                <InputLabel>Service</InputLabel>
-                <Select
-                  value={formData.serviceId}
-                  onChange={(e) => setFormData({ ...formData, serviceId: e.target.value as string })}
-                  label="Service"
-                >
-                  {services?.map((service) => (
-                    <MenuItem key={service.id} value={service.id}>
-                      {service.name} - {service.duration} min - ${service.price}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Typography variant="subtitle1" gutterBottom>
+                Service Selection
+              </Typography>
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth variant="outlined">
+                    <InputLabel id="service-collection-label">Service Collection</InputLabel>
+                    <Select
+                      labelId="service-collection-label"
+                      value={selectedServiceCollection}
+                      onChange={(e) => setSelectedServiceCollection(e.target.value as string)}
+                      label="Service Collection"
+                    >
+                      <MenuItem value="">
+                        <em>All Collections</em>
+                      </MenuItem>
+                      {serviceCollections?.map((collection) => (
+                        <MenuItem key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    placeholder="Search services..."
+                    value={serviceSearchQuery}
+                    onChange={(e) => setServiceSearchQuery(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+              </Grid>
+              
+              {/* Service Cards */}
+              <Box sx={{ maxHeight: '300px', overflow: 'auto', mb: 2 }}>
+                <Grid container spacing={1}>
+                  {getFilteredServices().length > 0 ? (
+                    getFilteredServices().map((service) => (
+                      <Grid item xs={12} sm={6} key={service.id}>
+                        <Paper 
+                          elevation={formData.serviceId === service.id ? 4 : 1}
+                          sx={{ 
+                            p: 1.5, 
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            border: formData.serviceId === service.id ? '2px solid' : '1px solid',
+                            borderColor: formData.serviceId === service.id ? 'primary.main' : 'divider',
+                            bgcolor: formData.serviceId === service.id ? 'rgba(25, 118, 210, 0.12)' : 'background.paper',
+                            transform: formData.serviceId === service.id ? 'translateY(-3px)' : 'none',
+                            boxShadow: formData.serviceId === service.id ? 3 : 1,
+                            '&:hover': {
+                              bgcolor: formData.serviceId === service.id ? 'rgba(25, 118, 210, 0.12)' : 'action.hover',
+                              transform: 'translateY(-2px)',
+                              boxShadow: 2
+                            }
+                          }}
+                          onClick={() => setFormData({ ...formData, serviceId: service.id })}
+                        >
+                          <Typography variant="subtitle1" fontWeight={formData.serviceId === service.id ? "bold" : "medium"} color={formData.serviceId === service.id ? "primary.main" : "text.primary"}>
+                            {formData.serviceId === service.id && "✓ "}{service.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {service.duration} min
+                            </Typography>
+                            <Typography variant="body1" fontWeight="bold">
+                              {formatCurrency(service.price)}
+                            </Typography>
+                          </Box>
+                          {service.description && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                              {service.description}
+                            </Typography>
+                          )}
+                        </Paper>
+                      </Grid>
+                    ))
+                  ) : (
+                    <Grid item xs={12}>
+                      <Alert severity="info">
+                        No services found. Try adjusting your search or selecting a different collection.
+                      </Alert>
+                    </Grid>
+                  )}
+                </Grid>
+              </Box>
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth required>
