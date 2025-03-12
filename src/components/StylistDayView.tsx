@@ -19,92 +19,97 @@ import {
   SelectChangeEvent,
   Snackbar,
   Alert,
-  useTheme
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { ChevronLeft, ChevronRight, Today, Receipt } from '@mui/icons-material';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Today, 
+  Receipt, 
+  Search, 
+  Clear, 
+  CalendarMonth,
+  Coffee,
+  Timer
+} from '@mui/icons-material';
 import { format, addDays, isSameDay } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useClients } from '../hooks/useClients';
 import { StylistBreak } from '../hooks/useStylists';
+import GoogleCalendarSync from './GoogleCalendarSync';
+import { useAppointments } from '../hooks/useAppointments';
+import { googleCalendarService } from '../services/googleCalendarService';
 
-// Custom implementations of date-fns functions
-const formatTime = (date: Date): string => {
-  return date.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
-    minute: '2-digit',
-    hour12: true 
-  });
-};
-
-// Define the time slots for the day (from 8 AM to 10 PM)
+// Define the time slots for the day with 30-minute intervals
 const BUSINESS_HOURS = {
   start: 8,  // 8 AM
-  end: 22,   // 10 PM
+  end: 20,   // 8 PM
 };
 
-// Update the time slot height to make the calendar more readable
-const TIME_SLOT_HEIGHT = 30; // Increased from 15px to 30px for better visibility
+// Define time slot heights for 30-minute intervals
+const TIME_SLOT_HEIGHT = 40; // Height for each 30-minute slot
+const HOUR_HEIGHT = TIME_SLOT_HEIGHT * 2; // Height for a full hour (2 x 30-minute slots)
 
-// Styled components
-const DayViewContainer = styled(Paper)(({ theme }) => ({
-  height: 'calc(100vh - 120px)',
+// Styled components with responsive design
+const DayViewContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
-  overflow: 'hidden',
+  height: '100%',
   backgroundColor: theme.palette.background.default,
-  border: `1px solid ${theme.palette.divider}`,
+  overflow: 'hidden',
   borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[1],
 }));
 
 const DayViewHeader = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(2),
+  backgroundColor: theme.palette.background.paper,
+  borderBottom: `1px solid ${theme.palette.divider}`,
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: theme.spacing(2),
-  borderBottom: `1px solid ${theme.palette.divider}`,
-  backgroundColor: theme.palette.background.paper, // White background
-  boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.05)',
-  borderTopLeftRadius: 28, // Match container
-  borderTopRightRadius: 28, // Match container
+  flexWrap: 'wrap', // Allow wrapping on small screens
+  gap: theme.spacing(2),
+  [theme.breakpoints.down('md')]: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
 }));
 
-const ScheduleGrid = styled(Box)(({ theme }) => ({
+const DayViewContent = styled(Box)(({ theme }) => ({
   display: 'flex',
-  flex: 1,
+  flexGrow: 1,
   overflow: 'auto',
+  position: 'relative',
+  backgroundColor: theme.palette.background.default,
 }));
 
 const TimeColumn = styled(Box)(({ theme }) => ({
-  width: 100, // Increased from 80px to 100px for better readability
-  flexShrink: 0,
+  display: 'flex',
+  flexDirection: 'column',
   borderRight: `1px solid ${theme.palette.divider}`,
+  minWidth: '80px', // Width for time column
   position: 'sticky',
   left: 0,
+  zIndex: 10,
   backgroundColor: theme.palette.background.paper,
-  zIndex: 2,
+  boxShadow: '2px 0 4px rgba(0, 0, 0, 0.1)',
 }));
 
-const StylistColumn = styled(Box)(({ theme }) => ({
-  flex: 1,
-  minWidth: 200, // Increased from 180px to 200px for better spacing
-  borderRight: `1px solid ${theme.palette.divider}`,
-  position: 'relative',
-  backgroundColor: theme.palette.salon.offWhite,
-}));
-
-const StylistHeader = styled(Box)(({ theme }) => ({
-  padding: theme.spacing(1.5), // Increased padding for better visibility
-  textAlign: 'center',
-  borderBottom: `1px solid ${theme.palette.divider}`,
-  backgroundColor: theme.palette.salon.oliveLight,
-  position: 'sticky',
-  top: 0,
-  zIndex: 3,
-  height: 56, // Increased from 48px to 56px for better visibility
+const HourLabel = styled(Box)(({ theme }) => ({
+  height: TIME_SLOT_HEIGHT,
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  alignItems: 'flex-start',
+  justifyContent: 'flex-end', // Right align time labels
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  padding: theme.spacing(0, 1, 0, 0), // Right padding only
+  fontWeight: 'normal',
+  position: 'relative',
+  boxSizing: 'border-box',
+  fontSize: '0.75rem', // Smaller font size
+  color: theme.palette.text.secondary,
 }));
 
 const TimeSlot = styled(Box)(({ theme }) => ({
@@ -112,12 +117,42 @@ const TimeSlot = styled(Box)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
   display: 'flex',
   alignItems: 'center',
-  padding: theme.spacing(0.75), // Increased padding for better spacing
+  padding: theme.spacing(0.5),
   backgroundColor: theme.palette.background.paper,
   position: 'relative',
+  boxSizing: 'border-box',
   '&:last-child': {
     borderBottom: 'none',
   },
+  '&:hover': {
+    backgroundColor: theme.palette.action.hover,
+  },
+}));
+
+const StylistColumn = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  flexGrow: 1,
+  minWidth: '200px',
+  position: 'relative',
+  borderRight: `1px solid ${theme.palette.divider}`,
+  '&:last-child': {
+    borderRight: 'none',
+  },
+}));
+
+const StylistHeader = styled(Box)(({ theme }) => ({
+  height: '50px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: theme.spacing(1, 2),
+  backgroundColor: theme.palette.background.paper,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  position: 'sticky',
+  top: 0,
+  zIndex: 5,
+  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
 }));
 
 const TimeLabel = styled(Typography)(({ theme }) => ({
@@ -145,108 +180,153 @@ const AppointmentSlot = styled(Box)(({ theme }) => ({
   },
 }));
 
-// Update the AppointmentCard component
+// Update the AppointmentCard component for better alignment with Google Calendar style
 const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
-  left: theme.spacing(0.75),
-  right: theme.spacing(0.75),
-  height: duration, // Use the calculated height directly
+  left: theme.spacing(0.5),
+  right: theme.spacing(0.5),
+  height: `${duration}px`,
   backgroundColor: theme.palette.primary.main,
   color: theme.palette.primary.contrastText,
-  borderRadius: 8,
-  padding: theme.spacing(1, 1.5), // Increased padding for better readability
+  borderRadius: '4px',
+  padding: theme.spacing(0.5, 1),
   overflow: 'hidden',
-  boxShadow: '0px 4px 12px rgba(107, 142, 35, 0.25)',
-  zIndex: 1,
-  fontSize: '0.9rem', // Increased from 0.75rem for better readability
+  boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)',
+  zIndex: 5,
+  fontSize: '0.85rem',
   display: 'flex',
   flexDirection: 'column',
-  justifyContent: 'space-between',
-  transition: 'all 0.2s ease-in-out',
-  cursor: 'move',
-  border: '1px solid rgba(255, 255, 255, 0.25)',
+  justifyContent: 'flex-start',
+  transition: 'all 0.2s ease',
+  cursor: 'pointer',
+  border: '1px solid rgba(0, 0, 0, 0.1)',
   '&:hover': {
-    boxShadow: '0px 6px 16px rgba(107, 142, 35, 0.4)',
-    transform: 'translateY(-2px)',
+    boxShadow: '0px 2px 5px rgba(0, 0, 0, 0.2)',
+    transform: 'translateY(-1px)',
+  },
+  // Ensure accurate positioning
+  boxSizing: 'border-box',
+  marginTop: 0,
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(0.25, 0.5),
+    fontSize: '0.75rem',
   },
 }));
 
-// Update the BreakCard component to ensure it doesn't capture mouse events
+// Update the BreakCard component for better positioning
 const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
   left: 0,
   right: 0,
-  height: (duration / 15) * TIME_SLOT_HEIGHT, // Adjust for 15-minute slots
-  backgroundColor: '#d32f2f', // Solid red color
+  height: duration,
+  backgroundColor: '#d32f2f',
   color: '#ffffff',
   borderRadius: 0,
   padding: theme.spacing(0.75, 1),
   overflow: 'hidden',
-  boxShadow: 'none', // Remove the shadow completely
-  zIndex: 20, // Very high z-index to ensure it's above everything
-  fontSize: '0.75rem',
+  boxShadow: 'none',
+  // Ensure accurate positioning
+  boxSizing: 'border-box',
+  marginTop: 0,
+  zIndex: 4,
+  fontSize: '0.8rem',
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'center',
-  transition: 'none', // Remove transitions
-  border: 'none', // Remove border
-  cursor: 'not-allowed',
-  pointerEvents: 'none', // Prevent it from capturing mouse events
-  '&:hover': {
-    boxShadow: 'none', // No hover effect
-  },
+  opacity: 0.9,
 }));
 
-// Update the generateTimeSlots function to create 15-minute intervals
+// Improved time formatting with options for 12-hour or 24-hour format
+const formatTime = (date: Date, use24Hour = false): string => {
+  if (use24Hour) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+};
+
+// Generate time slots with 30-minute intervals
 const generateTimeSlots = () => {
   const slots = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
-    // Add slots for 0, 15, 30, and 45 minutes
+    // Add slots for 0 and 30 minutes
     slots.push({ hour, minute: 0 });
     if (hour < BUSINESS_HOURS.end) {
-      slots.push({ hour, minute: 15 });
       slots.push({ hour, minute: 30 });
-      slots.push({ hour, minute: 45 });
     }
   }
   return slots;
 };
 
-// Update the generateTimeOptions function to include 15-minute intervals
+// Generate time options for dropdown selectors
 const generateTimeOptions = () => {
   const options = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
     const period = hour >= 12 ? 'PM' : 'AM';
     const hour12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
     
-    // Add options for 0, 15, 30, and 45 minutes
+    // Add options for 0 and 30 minutes
     options.push({ 
       value: `${hour}:00`, 
       label: `${hour12}:00 ${period}` 
     });
     if (hour < BUSINESS_HOURS.end) {
       options.push({ 
-        value: `${hour}:15`, 
-        label: `${hour12}:15 ${period}` 
-      });
-      options.push({ 
         value: `${hour}:30`, 
         label: `${hour12}:30 ${period}` 
-      });
-      options.push({ 
-        value: `${hour}:45`, 
-        label: `${hour12}:45 ${period}` 
       });
     }
   }
   return options;
 };
 
-// Create a helper function to format hour in 12-hour format with AM/PM
-const formatHour = (hour: number): string => {
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
-  return `${hour12}:00 ${period}`;
+// Improved normalize date function for consistent time handling
+const normalizeDateTime = (dateTimeString: string, currentDateObj: Date) => {
+  // Parse the input date string
+  const dateTime = new Date(dateTimeString);
+  
+  // Create a new date object with the current date but the appointment's time
+  const normalized = new Date(
+    currentDateObj.getFullYear(),
+    currentDateObj.getMonth(),
+    currentDateObj.getDate(),
+    dateTime.getHours(),
+    dateTime.getMinutes(),
+    0,
+    0
+  );
+  
+  return normalized;
+};
+
+// Update the getAppointmentPosition function to use the new time slot height
+const getAppointmentPosition = (startTime: string, currentDateObj: Date) => {
+  const startDate = normalizeDateTime(startTime, currentDateObj);
+  const businessStartHour = BUSINESS_HOURS.start;
+  
+  // Calculate hours and minutes from the start of business hours
+  const hours = startDate.getHours() - businessStartHour;
+  const minutes = startDate.getMinutes();
+  
+  // Calculate position based on hours and minutes
+  // Each hour is HOUR_HEIGHT pixels, each minute is HOUR_HEIGHT/60 pixels
+  const position = (hours * HOUR_HEIGHT) + (minutes * (HOUR_HEIGHT / 60));
+  
+  return position;
+};
+
+// Update the getAppointmentDuration function to use the new time slot height
+const getAppointmentDuration = (startTime: string, endTime: string, currentDateObj: Date) => {
+  const startDate = normalizeDateTime(startTime, currentDateObj);
+  const endDate = normalizeDateTime(endTime, currentDateObj);
+  
+  // Calculate duration in minutes
+  const durationMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
+  
+  // Convert minutes to pixels (each minute is HOUR_HEIGHT/60 pixels)
+  const durationPixels = durationMinutes * (HOUR_HEIGHT / 60);
+  
+  // Ensure minimum height for very short appointments
+  return Math.max(durationPixels, TIME_SLOT_HEIGHT / 2);
 };
 
 interface StylistDayViewProps {
@@ -271,6 +351,7 @@ export default function StylistDayView({
   onAddBreak,
 }: StylistDayViewProps) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState<Date>(selectedDate || new Date());
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState<boolean>(false);
@@ -282,7 +363,9 @@ export default function StylistDayView({
     endTime: '',
     reason: ''
   });
-  // Add back the editFormData state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
+  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [editFormData, setEditFormData] = useState({
     clientName: '',
     serviceId: '',
@@ -293,6 +376,14 @@ export default function StylistDayView({
   });
   // State for drag and drop
   const [draggedAppointment, setDraggedAppointment] = useState<any | null>(null);
+  
+  // Track expanded appointment for detail view
+  const [expandedAppointment, setExpandedAppointment] = useState<string | null>(null);
+  
+  // Add search functionality
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
   
   const timeSlots = generateTimeSlots();
   const timeOptions = generateTimeOptions();
@@ -309,6 +400,62 @@ export default function StylistDayView({
     setCurrentDate(new Date());
   };
   
+  const handleTomorrow = () => {
+    setCurrentDate(addDays(new Date(), 1));
+  };
+  
+  // Filter appointments based on search query
+  const handleSearch = () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    setIsSearching(true);
+    
+    // Search through all appointments
+    const results = appointments.filter(appointment => {
+      const clientName = appointment.clients?.full_name || '';
+      const serviceName = services.find(s => s.id === appointment.service_id)?.name || '';
+      const notes = appointment.notes || '';
+      
+      // Try to parse as date if it looks like a date
+      let searchDate = null;
+      if (searchQuery.includes('/') || searchQuery.includes('-')) {
+        searchDate = new Date(searchQuery);
+      }
+      
+      // Check if appointmentDate matches search date (if search is a valid date)
+      let dateMatches = false;
+      if (searchDate && !isNaN(searchDate.getTime())) {
+        const appointmentDate = new Date(appointment.start_time);
+        dateMatches = (
+          appointmentDate.getFullYear() === searchDate.getFullYear() &&
+          appointmentDate.getMonth() === searchDate.getMonth() &&
+          appointmentDate.getDate() === searchDate.getDate()
+        );
+      }
+      
+      // Match by client name, service name, notes or date
+      return (
+        clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        serviceName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        notes.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        dateMatches
+      );
+    });
+    
+    setSearchResults(results);
+  };
+  
+  // Clear search
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+  };
+
   const handleSlotClick = (stylistId: string, hour: number, minute: number) => {
     // Check if this time is during a break
     if (isBreakTime(stylistId, hour, minute)) {
@@ -325,6 +472,7 @@ export default function StylistDayView({
 
   const { clients, updateClient } = useClients();
 
+  // Handle opening the edit dialog for an appointment
   const handleAppointmentClick = (appointment: any) => {
     setSelectedAppointment(appointment);
     
@@ -357,6 +505,15 @@ export default function StylistDayView({
     });
     
     setEditDialogOpen(true);
+  };
+
+  // Handle appointment click to expand/collapse details
+  const toggleAppointmentDetails = (appointmentId: string) => {
+    if (expandedAppointment === appointmentId) {
+      setExpandedAppointment(null); // Collapse if already expanded
+    } else {
+      setExpandedAppointment(appointmentId); // Expand this appointment
+    }
   };
   
   // Drag and drop handlers
@@ -486,136 +643,6 @@ export default function StylistDayView({
     });
   };
   
-  // Filter appointments for the current day
-  const todayAppointments = appointments.filter(appointment => {
-    const appointmentDate = new Date(appointment.start_time);
-    return isSameDay(appointmentDate, currentDate);
-  });
-  
-  // Add a helper function to ensure dates are consistently handled
-  const normalizeDateTime = (dateTimeString: string) => {
-    // Parse the input date string
-    const dateTime = new Date(dateTimeString);
-    
-    // Log the original date for debugging
-    console.log('Normalizing date:', {
-      original: dateTimeString,
-      parsed: dateTime.toLocaleString(),
-      hours: dateTime.getHours(),
-      minutes: dateTime.getMinutes()
-    });
-    
-    // Explicitly preserve the time components while normalizing to the current date
-    const normalized = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth(),
-      currentDate.getDate(),
-      dateTime.getHours(),
-      dateTime.getMinutes(),
-      0,
-      0
-    );
-    
-    // Log the normalized date for debugging
-    console.log('Normalized date:', {
-      result: normalized.toLocaleString(),
-      hours: normalized.getHours(),
-      minutes: normalized.getMinutes()
-    });
-    
-    return normalized;
-  };
-
-  // Update the getAppointmentPosition function to correctly calculate positions
-  const getAppointmentPosition = (startTime: string) => {
-    // Use the normalized date to ensure consistent time interpretation
-    const time = normalizeDateTime(startTime);
-    
-    // Log for debugging the time being processed
-    console.log('Calculating position for:', {
-      timeString: startTime,
-      normalizedTime: time.toLocaleTimeString(),
-      hours: time.getHours(),
-      minutes: time.getMinutes()
-    });
-    
-    // Calculate position based on business hours and 15-minute intervals
-    const hoursSinceStart = time.getHours() - BUSINESS_HOURS.start;
-    const minutesSinceHourStart = time.getMinutes();
-    
-    // Calculate total minutes since the start of business hours
-    const totalMinutesSinceStart = (hoursSinceStart * 60) + minutesSinceHourStart;
-    
-    // Calculate total 15-minute intervals since the start of business hours
-    // Ensure we're using exact intervals without any rounding issues
-    const totalIntervals = Math.round(totalMinutesSinceStart / 15);
-    
-    // Calculate position in pixels (each interval is TIME_SLOT_HEIGHT pixels)
-    const position = totalIntervals * TIME_SLOT_HEIGHT;
-    
-    console.log('Position calculation:', {
-      hour: time.getHours(),
-      businessStart: BUSINESS_HOURS.start,
-      hourDiff: hoursSinceStart,
-      minute: minutesSinceHourStart,
-      totalMinutesSinceStart,
-      totalIntervals,
-      position
-    });
-    
-    return position;
-  };
-  
-  // Update the getAppointmentDuration function to work with the new time slot height
-  const getAppointmentDuration = (startTime: string, endTime: string) => {
-    // Use normalized dates to ensure consistent time interpretation
-    const start = normalizeDateTime(startTime);
-    const end = normalizeDateTime(endTime);
-    
-    // Calculate duration in minutes
-    const durationInMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    
-    // Calculate number of 15-minute intervals (round up to ensure coverage)
-    const intervals = Math.ceil(durationInMinutes / 15);
-    
-    // Convert to pixels based on TIME_SLOT_HEIGHT (30px per 15-minute interval)
-    const height = intervals * TIME_SLOT_HEIGHT;
-    
-    console.log('Duration calculation:', {
-      startTime: start.toLocaleTimeString(),
-      endTime: end.toLocaleTimeString(),
-      durationInMinutes,
-      intervals,
-      height
-    });
-    
-    return height;
-  };
-
-  const navigate = useNavigate();
-
-  // Handle navigation to POS with appointment data
-  const handleCreateBill = () => {
-    if (!selectedAppointment) return;
-    
-    const service = services.find(s => s.id === selectedAppointment.service_id);
-    
-    // Navigate to POS with appointment data
-    navigate('/pos', {
-      state: {
-        appointmentData: {
-          id: selectedAppointment.id,
-          clientName: selectedAppointment.clients?.full_name || '',
-          stylistId: selectedAppointment.stylist_id,
-          serviceId: selectedAppointment.service_id,
-          serviceName: service?.name || '',
-          servicePrice: service?.price || 0,
-          appointmentTime: selectedAppointment.start_time
-        }
-      }
-    });
-  };
-
   // Get stylist breaks for the current day
   const getStylistBreaks = (stylistId: string) => {
     const stylist = stylists.find(s => s.id === stylistId);
@@ -648,11 +675,59 @@ export default function StylistDayView({
     });
   };
 
-  // Add state for snackbar
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
+  // Check for appointment conflicts
+  const checkForConflicts = () => {
+    const conflicts = [];
+    
+    // Group appointments by stylist
+    const appointmentsByStylist = {};
+    appointments.forEach(appointment => {
+      if (!appointmentsByStylist[appointment.stylist_id]) {
+        appointmentsByStylist[appointment.stylist_id] = [];
+      }
+      appointmentsByStylist[appointment.stylist_id].push(appointment);
+    });
+    
+    // Check each stylist's appointments for overlaps
+    Object.keys(appointmentsByStylist).forEach(stylistId => {
+      const stylistAppointments = appointmentsByStylist[stylistId];
+      
+      for (let i = 0; i < stylistAppointments.length; i++) {
+        const appt1 = stylistAppointments[i];
+        const start1 = normalizeDateTime(appt1.start_time, currentDate).getTime();
+        const end1 = normalizeDateTime(appt1.end_time, currentDate).getTime();
+        
+        for (let j = i + 1; j < stylistAppointments.length; j++) {
+          const appt2 = stylistAppointments[j];
+          const start2 = normalizeDateTime(appt2.start_time, currentDate).getTime();
+          const end2 = normalizeDateTime(appt2.end_time, currentDate).getTime();
+          
+          // Check if appointments overlap
+          if ((start1 < end2 && end1 > start2)) {
+            conflicts.push([appt1.id, appt2.id]);
+          }
+        }
+      }
+    });
+    
+    return conflicts;
+  };
+  
+  // Get all appointments for today
+  const todayAppointments = appointments.filter(appointment => {
+    const appointmentDate = new Date(appointment.start_time);
+    return isSameDay(appointmentDate, currentDate);
+  });
+  
+  // Find conflicting appointments
+  const conflicts = checkForConflicts();
+  
+  // Function to check if an appointment has conflicts
+  const hasConflict = (appointmentId: string) => {
+    return conflicts.some(conflict => conflict.includes(appointmentId));
+  };
 
-  // Add handleSnackbarClose function
+  // Snackbar close handler
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
   };
@@ -687,35 +762,31 @@ export default function StylistDayView({
           stylistId,
           hour,
           minute,
-          slotTime: slotTime.toLocaleTimeString(),
-          slotEndTime: slotEndTime.toLocaleTimeString(),
-          breaks: todayBreaks.map((b: StylistBreak) => ({
+          breaks: todayBreaks.map(b => ({
+            id: b.id,
             startTime: new Date(b.startTime).toLocaleTimeString(),
             endTime: new Date(b.endTime).toLocaleTimeString(),
-            normalizedStart: normalizeDateTime(b.startTime).toLocaleTimeString(),
-            normalizedEnd: normalizeDateTime(b.endTime).toLocaleTimeString()
+            normalizedStart: normalizeDateTime(b.startTime, currentDate).toLocaleTimeString(),
+            normalizedEnd: normalizeDateTime(b.endTime, currentDate).toLocaleTimeString()
           }))
         });
       }
       
-      // Check if the slot time overlaps with any break period
+      // Check if any break overlaps with this time slot
       return todayBreaks.some((breakItem: StylistBreak) => {
         try {
           // Use normalized times for consistent handling
-          const breakStart = normalizeDateTime(breakItem.startTime).getTime();
-          const breakEnd = normalizeDateTime(breakItem.endTime).getTime();
+          const breakStart = normalizeDateTime(breakItem.startTime, currentDate).getTime();
+          const breakEnd = normalizeDateTime(breakItem.endTime, currentDate).getTime();
           
           // Check for any overlap between the slot and the break
-          return (
-            // Check if the slot starts during a break
-            (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-            // Check if the slot ends during a break
-            (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-            // Check if the slot completely contains a break
-            (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
-          );
+          const isOverlapping = 
+            (breakStart <= slotTimeValue && breakEnd > slotTimeValue) || // Break starts before/at slot and ends after slot start
+            (breakStart >= slotTimeValue && breakStart < slotEndTimeValue); // Break starts during the slot
+          
+          return isOverlapping;
         } catch (error) {
-          console.error('Error checking break time:', error, breakItem);
+          console.error('Error checking break overlap:', error);
           return false;
         }
       });
@@ -826,181 +897,609 @@ export default function StylistDayView({
     },
   }));
 
-  // Update the time column rendering
-  const renderTimeColumn = () => (
-    <TimeColumn>
-      <StylistHeader>
-        <TimeLabel variant="subtitle2" sx={{ fontSize: '1rem', fontWeight: 'medium' }}>
-          Time
-        </TimeLabel>
-      </StylistHeader>
-      {timeSlots.map(({ hour, minute }) => (
-        <TimeSlot key={`time-${hour}-${minute}`}>
-          {/* Only show the hour label for the first slot of each hour */}
-          {minute === 0 ? (
-            <TimeLabel sx={{ fontWeight: 'medium' }}>
-              {format(new Date().setHours(hour, minute), 'h:mm a')}
-            </TimeLabel>
-          ) : (
-            <TimeLabel sx={{ fontSize: '0.75rem', opacity: 0.8 }}>
-              {format(new Date().setHours(hour, minute), 'h:mm a')}
-            </TimeLabel>
-          )}
-        </TimeSlot>
-      ))}
-    </TimeColumn>
-  );
+  // Render time column with 30-minute intervals
+  const renderTimeColumn = () => {
+    const timeSlots = generateTimeSlots();
+    
+    return (
+      <TimeColumn>
+        <StylistHeader>Time</StylistHeader>
+        {timeSlots.map(({ hour, minute }, index) => {
+          const timeDate = new Date();
+          timeDate.setHours(hour, minute, 0, 0);
+          
+          // Only show time label for the start of each hour and hide the 30-minute marker
+          const showLabel = minute === 0;
+          
+          return (
+            <HourLabel 
+              key={`time-${hour}-${minute}`} 
+              sx={{ 
+                height: TIME_SLOT_HEIGHT,
+                borderBottom: minute === 30 ? '1px dashed rgba(0, 0, 0, 0.08)' : '1px solid rgba(0, 0, 0, 0.1)',
+                fontWeight: minute === 0 ? 'medium' : 'normal',
+                color: minute === 0 ? 'text.secondary' : 'text.disabled',
+                fontSize: minute === 0 ? '0.75rem' : '0.7rem',
+                // Position the time label to the left of the grid line
+                '& span': {
+                  position: 'relative',
+                  top: minute === 0 ? '-9px' : '0',
+                }
+              }}
+            >
+              {showLabel && <span>{formatTime(timeDate)}</span>}
+            </HourLabel>
+          );
+        })}
+      </TimeColumn>
+    );
+  };
+
+  // Render appointments with expandable details
+  const renderAppointments = (stylistId: string) => {
+    // Filter appointments for this stylist on the current day
+    let stylistAppointments = appointments.filter(appointment => {
+      const appointmentDate = new Date(appointment.start_time);
+      return appointment.stylist_id === stylistId && 
+             isSameDay(appointmentDate, currentDate);
+    });
+    
+    // If searching, only show search results for this stylist
+    if (isSearching) {
+      stylistAppointments = stylistAppointments.filter(appointment => 
+        searchResults.some(result => result.id === appointment.id)
+      );
+    }
+
+    return (
+      <>
+        {stylistAppointments.map(appointment => {
+          const service = services.find(s => s.id === appointment.service_id);
+          const top = getAppointmentPosition(appointment.start_time, currentDate);
+          const duration = getAppointmentDuration(appointment.start_time, appointment.end_time, currentDate);
+          
+          // Format times for display
+          const startTimeDate = normalizeDateTime(appointment.start_time, currentDate);
+          const endTimeDate = normalizeDateTime(appointment.end_time, currentDate);
+          const formattedStartTime = formatTime(startTimeDate);
+          const formattedEndTime = formatTime(endTimeDate);
+          
+          // Check if this appointment is expanded
+          const isExpanded = expandedAppointment === appointment.id;
+          
+          // Calculate if this appointment doesn't align with 30-minute intervals
+          const startMinutes = startTimeDate.getMinutes();
+          const endMinutes = endTimeDate.getMinutes();
+          const isNonStandardTime = (startMinutes % 30 !== 0) || (endMinutes % 30 !== 0);
+          
+          // Check if this appointment has conflicts
+          const appointmentHasConflict = hasConflict(appointment.id);
+          
+          // Check if this appointment is synced with Google Calendar
+          const isSyncedWithGoogleCalendar = !!appointment.googleCalendarId;
+          
+          return (
+            <AppointmentCard
+              key={appointment.id}
+              duration={duration}
+              style={{ top: `${top}px` }}
+              onClick={() => toggleAppointmentDetails(appointment.id)}
+              sx={{
+                zIndex: isExpanded ? 10 : 5,
+                transition: 'all 0.3s ease',
+                transform: isExpanded ? 'scale(1.05)' : 'scale(1)',
+                boxShadow: isExpanded ? '0 8px 16px rgba(0,0,0,0.2)' : '0 3px 8px rgba(0,0,0,0.15)',
+                height: isExpanded ? 'auto' : undefined,
+                minHeight: `${duration}px`,
+                border: appointmentHasConflict ? '2px solid #ff0000' : 
+                        isNonStandardTime ? '2px dashed rgba(255,255,0,0.5)' : 
+                        '1px solid rgba(255,255,255,0.15)',
+                backgroundColor: appointmentHasConflict ? 
+                                 'rgba(255, 0, 0, 0.15)' : 
+                                 theme.palette.primary.main,
+              }}
+            >
+              <Typography variant="subtitle2" fontWeight="bold" noWrap>
+                {appointment.clients?.full_name || 'Unknown Client'}
+              </Typography>
+              
+              <Typography variant="caption" sx={{ mb: 0.5 }}>
+                {service?.name || 'Unknown Service'}
+              </Typography>
+              
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between'
+              }}>
+                <Typography variant="caption" sx={{ 
+                  display: 'inline-block', 
+                  backgroundColor: 'rgba(0,0,0,0.1)', 
+                  padding: '2px 4px',
+                  borderRadius: '2px',
+                  fontSize: '0.75rem'
+                }}>
+                  {formattedStartTime} - {formattedEndTime}
+                </Typography>
+                
+                {isSyncedWithGoogleCalendar && (
+                  <Tooltip title="Synced with Google Calendar">
+                    <CalendarMonth 
+                      fontSize="small" 
+                      sx={{ 
+                        color: 'rgba(255,255,255,0.8)', 
+                        fontSize: '0.9rem',
+                        ml: 0.5
+                      }} 
+                    />
+                  </Tooltip>
+                )}
+              </Box>
+              
+              {appointmentHasConflict && !isExpanded && (
+                <Typography variant="caption" sx={{ 
+                  display: 'block', 
+                  color: 'red',
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  padding: '2px 4px',
+                  borderRadius: '2px',
+                  mt: 0.5,
+                  fontWeight: 'bold',
+                  fontSize: '0.75rem'
+                }}>
+                  ⚠️ Schedule Conflict
+                </Typography>
+              )}
+              
+              {isExpanded && (
+                <Box sx={{ mt: 1, pt: 1, borderTop: '1px dashed rgba(255,255,255,0.3)' }}>
+                  <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold' }}>
+                    Appointment Details:
+                  </Typography>
+                  
+                  {isNonStandardTime && (
+                    <Typography variant="caption" sx={{ 
+                      display: 'block', 
+                      color: 'yellow',
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      padding: '4px',
+                      borderRadius: '2px',
+                      mt: 0.5
+                    }}>
+                      ⚠️ Non-standard time slot - Consider adjusting to align with 30-minute intervals
+                    </Typography>
+                  )}
+                  
+                  {appointmentHasConflict && (
+                    <Typography variant="caption" sx={{ 
+                      display: 'block', 
+                      color: 'red',
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      padding: '4px',
+                      borderRadius: '2px',
+                      mt: 0.5,
+                      fontWeight: 'bold'
+                    }}>
+                      ⚠️ CONFLICT: This appointment overlaps with another
+                    </Typography>
+                  )}
+                  
+                  <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                    Duration: {Math.round(duration / TIME_SLOT_HEIGHT * 30)} minutes
+                  </Typography>
+                  
+                  {appointment.clients?.phone && (
+                    <Typography variant="caption" sx={{ display: 'block' }}>
+                      Phone: {appointment.clients.phone}
+                    </Typography>
+                  )}
+                  
+                  {appointment.notes && (
+                    <Typography variant="caption" sx={{ display: 'block' }}>
+                      Notes: {appointment.notes}
+                    </Typography>
+                  )}
+                  
+                  {/* Google Calendar status */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    mt: 0.5,
+                    backgroundColor: isSyncedWithGoogleCalendar ? 'rgba(25, 118, 210, 0.1)' : 'transparent',
+                    padding: '4px',
+                    borderRadius: '2px',
+                  }}>
+                    {isSyncedWithGoogleCalendar ? (
+                      <>
+                        <CalendarMonth fontSize="small" color="primary" sx={{ mr: 0.5 }} />
+                        <Typography variant="caption" color="primary">
+                          Synced with Google Calendar
+                        </Typography>
+                      </>
+                    ) : (
+                      <>
+                        <CalendarMonth fontSize="small" color="action" sx={{ mr: 0.5, opacity: 0.5 }} />
+                        <Typography variant="caption" color="text.secondary">
+                          Not synced with Google Calendar
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <Button 
+                      size="small" 
+                      variant="contained" 
+                      color="primary" 
+                      sx={{ fontSize: '0.7rem', py: 0.25 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Use the existing edit function
+                        handleAppointmentClick(appointment);
+                        // Close the expanded view
+                        setExpandedAppointment(null);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    
+                    {!isSyncedWithGoogleCalendar && (
+                      <Button 
+                        size="small"
+                        variant="outlined"
+                        color="primary"
+                        sx={{ fontSize: '0.7rem', py: 0.25 }}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const stylist = stylists.find(s => s.id === appointment.stylist_id);
+                            const calendarId = await googleCalendarService.syncAppointment(
+                              appointment,
+                              service,
+                              stylist
+                            );
+                            await handleSyncComplete(appointment.id, calendarId);
+                          } catch (error) {
+                            console.error('Error syncing appointment:', error);
+                            setSnackbarMessage('Failed to sync appointment with Google Calendar');
+                            setSnackbarOpen(true);
+                          }
+                        }}
+                      >
+                        Sync to Calendar
+                      </Button>
+                    )}
+                    
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      color="error" 
+                      sx={{ fontSize: '0.7rem', py: 0.25 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Use the existing delete function
+                        setSelectedAppointment(appointment);
+                        setDeleteDialogOpen(true);
+                        // Close the expanded view
+                        setExpandedAppointment(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+            </AppointmentCard>
+          );
+        })}
+      </>
+    );
+  };
+
+  // Render time grid with 30-minute intervals
+  const renderTimeGrid = () => {
+    const slots = [];
+    for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
+      // Add hour marker (solid line)
+      const hourPosition = (hour - BUSINESS_HOURS.start) * HOUR_HEIGHT;
+      slots.push(
+        <Box
+          key={`grid-hour-${hour}`}
+          sx={{
+            position: 'absolute',
+            top: hourPosition,
+            left: 0,
+            right: 0,
+            height: TIME_SLOT_HEIGHT,
+            backgroundColor: (theme) => 
+              hour % 2 === 0 ? 
+              'rgba(0, 0, 0, 0.01)' : 
+              'rgba(0, 0, 0, 0.02)',
+            borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
+            zIndex: 1,
+          }}
+        />
+      );
+      
+      // Add 30-minute marker (dashed line)
+      if (hour < BUSINESS_HOURS.end) {
+        slots.push(
+          <Box
+            key={`grid-${hour}-30`}
+            sx={{
+              position: 'absolute',
+              top: hourPosition + TIME_SLOT_HEIGHT,
+              left: 0,
+              right: 0,
+              height: TIME_SLOT_HEIGHT,
+              backgroundColor: 'transparent',
+              borderBottom: '1px dashed rgba(0, 0, 0, 0.05)',
+              zIndex: 1
+            }}
+          />
+        );
+      }
+    }
+    
+    return slots;
+  };
+
+  // Improved function to render a stylist column with better time slot interaction
+  const renderStylistColumn = (stylist: any) => {
+    const timeSlots = generateTimeSlots();
+    
+    return (
+      <StylistColumn key={stylist.id}>
+        <StylistHeader>
+          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {stylist.name}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <Tooltip title="Add break">
+              <IconButton 
+                size="small" 
+                onClick={() => handleBreakDialogOpen(stylist.id)}
+                sx={{ padding: '2px' }}
+              >
+                <Coffee fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </StylistHeader>
+        
+        {/* Render time slots */}
+        {timeSlots.map(({ hour, minute }) => {
+          const isBreak = isBreakTime(stylist.id, hour, minute);
+          
+          return (
+            <TimeSlot 
+              key={`slot-${stylist.id}-${hour}-${minute}`}
+              onClick={() => handleSlotClick(stylist.id, hour, minute)}
+              onDragOver={(e) => handleDragOver(e, stylist.id, hour, minute)}
+              onDrop={(e) => handleDrop(e, stylist.id, hour, minute)}
+              sx={{ 
+                height: TIME_SLOT_HEIGHT,
+                backgroundColor: isBreak ? 'rgba(0, 0, 0, 0.05)' : 'inherit',
+                cursor: isBreak ? 'not-allowed' : 'pointer',
+                borderBottom: minute === 30 ? '1px dashed rgba(0, 0, 0, 0.05)' : '1px solid rgba(0, 0, 0, 0.08)',
+              }}
+            />
+          );
+        })}
+        
+        {/* Render appointments */}
+        {renderAppointments(stylist.id)}
+      </StylistColumn>
+    );
+  };
+
+  // Create a responsive navigation component
+  const CalendarNavigation = () => {
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    
+    return (
+      <Box display="flex" alignItems="center" flexWrap="wrap" gap={1}>
+        <IconButton onClick={handlePrevDay} size={isMobile ? "small" : "medium"}>
+          <ChevronLeft />
+        </IconButton>
+        <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ 
+          fontWeight: 'bold',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: isMobile ? '150px' : '300px'
+        }}>
+          {format(currentDate, isMobile ? 'MMM d, yyyy' : 'EEEE, MMMM d, yyyy')}
+        </Typography>
+        <IconButton onClick={handleNextDay} size={isMobile ? "small" : "medium"}>
+          <ChevronRight />
+        </IconButton>
+        <Button 
+          variant="outlined" 
+          size="small" 
+          startIcon={!isMobile && <Today />}
+          onClick={handleToday}
+          sx={{ ml: isMobile ? 0 : 2 }}
+        >
+          Today
+        </Button>
+        <Button 
+          variant="outlined" 
+          size="small" 
+          onClick={handleTomorrow}
+          sx={{ ml: isMobile ? 0 : 1 }}
+        >
+          Tomorrow
+        </Button>
+      </Box>
+    );
+  };
+
+  // Handle navigation to POS with appointment data
+  const handleCreateBill = () => {
+    if (!selectedAppointment) return;
+    
+    const service = services.find(s => s.id === selectedAppointment.service_id);
+    
+    // Navigate to POS with appointment data
+    navigate('/pos', {
+      state: {
+        appointmentData: {
+          id: selectedAppointment.id,
+          clientName: selectedAppointment.clients?.full_name || '',
+          stylistId: selectedAppointment.stylist_id,
+          serviceId: selectedAppointment.service_id,
+          serviceName: service?.name || '',
+          servicePrice: service?.price || 0,
+          appointmentTime: selectedAppointment.start_time
+        }
+      }
+    });
+  };
+
+  // Add useAppointments hook to get the updateAppointmentGoogleCalendarId function
+  const { updateAppointmentGoogleCalendarId } = useAppointments();
+
+  // Handle Google Calendar sync completion
+  const handleSyncComplete = async (appointmentId: string, googleCalendarId: string) => {
+    try {
+      await updateAppointmentGoogleCalendarId(appointmentId, googleCalendarId);
+      setSnackbarMessage(`Appointment synced to Google Calendar`);
+      setSnackbarOpen(true);
+    } catch (error) {
+      console.error('Error updating appointment with Google Calendar ID:', error);
+      setSnackbarMessage('Failed to update appointment with Google Calendar ID');
+      setSnackbarOpen(true);
+    }
+  };
 
   return (
     <DayViewContainer>
       <DayViewHeader>
-        <Box display="flex" alignItems="center">
-          <IconButton onClick={handlePrevDay}>
-            <ChevronLeft />
-          </IconButton>
-          <Typography variant="h6" sx={{ mx: 2 }}>
-            {format(currentDate, 'EEEE, MMMM d, yyyy')}
-          </Typography>
-          <IconButton onClick={handleNextDay}>
-            <ChevronRight />
-          </IconButton>
-          <Tooltip title="Today">
-            <IconButton onClick={handleToday} sx={{ ml: 1 }}>
-              <Today />
-            </IconButton>
+        <CalendarNavigation />
+        
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          flexWrap: 'wrap',
+          width: { xs: '100%', md: 'auto' } 
+        }}>
+          <Tooltip title="30-minute intervals are shown. Click on an appointment to see details.">
+            <Typography variant="caption" sx={{ 
+              display: 'inline-block', 
+              backgroundColor: 'rgba(0,0,0,0.05)', 
+              padding: '4px 8px',
+              borderRadius: '4px',
+              mr: { xs: 0, md: 2 },
+              fontSize: '0.7rem',
+              whiteSpace: 'nowrap'
+            }}>
+              ℹ️ 30-min intervals • Click for details
+            </Typography>
           </Tooltip>
+          
+          {/* Search bar */}
+          <Box sx={{ 
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: 'white',
+            borderRadius: '4px',
+            padding: '0 8px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            flexGrow: { xs: 1, md: 0 },
+            width: { xs: '100%', sm: 'auto' }
+          }}>
+            <TextField
+              placeholder="Search name, service, date..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              size="small"
+              variant="standard"
+              InputProps={{
+                disableUnderline: true,
+                endAdornment: searchQuery ? (
+                  <IconButton size="small" onClick={handleClearSearch} sx={{ p: 0.5 }}>
+                    <span role="img" aria-label="clear">✖️</span>
+                  </IconButton>
+                ) : null
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearch();
+                }
+              }}
+              sx={{ 
+                minWidth: { xs: '100%', sm: '200px', md: '250px' },
+                fontSize: '0.9rem'
+              }}
+            />
+            <IconButton onClick={handleSearch} size="small">
+              <span role="img" aria-label="search">🔍</span>
+            </IconButton>
+          </Box>
         </Box>
       </DayViewHeader>
       
-      <ScheduleGrid>
+      {/* Add Google Calendar Sync Component */}
+      <Box sx={{ padding: 2, borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
+        <GoogleCalendarSync 
+          appointments={appointments} 
+          services={services}
+          stylists={stylists}
+          onSyncComplete={handleSyncComplete}
+        />
+      </Box>
+      
+      <DayViewContent>
+        {/* Time column */}
         {renderTimeColumn()}
         
         {/* Stylist columns */}
-        {stylists.map(stylist => (
-          <StylistColumn key={stylist.id}>
-            <StylistHeader
-              onClick={() => handleBreakDialogOpen(stylist.id)}
-              sx={{
-                cursor: 'pointer',
-                '&:hover': {
-                  backgroundColor: theme.palette.salon.oliveLight,
-                  opacity: 0.9
-                }
-              }}
+        {stylists.map(stylist => renderStylistColumn(stylist))}
+        
+        {/* Empty message when search returns no results */}
+        {isSearching && searchResults.length === 0 && (
+          <Box sx={{ 
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            textAlign: 'center',
+            padding: 3,
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            borderRadius: 2,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+            zIndex: 50,
+            width: { xs: '80%', sm: 'auto' }
+          }}>
+            <Typography variant="h6">No appointments found</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Try a different search term or clear the search
+            </Typography>
+            <Button 
+              variant="outlined" 
+              size="small" 
+              onClick={handleClearSearch}
+              sx={{ mt: 2 }}
             >
-              <Typography variant="subtitle2">{stylist.name}</Typography>
-            </StylistHeader>
-            
-            {/* Time slots for booking */}
-            {timeSlots.map(slot => (
-              <AppointmentSlot
-                key={`slot-${stylist.id}-${slot.hour}-${slot.minute}`}
-                onClick={() => handleSlotClick(stylist.id, slot.hour, slot.minute)}
-                onDragOver={(e) => handleDragOver(e, stylist.id, slot.hour, slot.minute)}
-                onDrop={(e) => handleDrop(e, stylist.id, slot.hour, slot.minute)}
-                sx={isBreakTime(stylist.id, slot.hour, slot.minute) ? { 
-                  backgroundColor: 'transparent', // Completely transparent
-                  cursor: 'not-allowed',
-                  pointerEvents: 'none', // Prevent mouse events
-                  '&:hover': {
-                    backgroundColor: 'transparent' // No hover effect
-                  }
-                } : undefined}
-              />
-            ))}
-            
-            {/* Appointments */}
-            {todayAppointments
-              .filter(appointment => appointment.stylist_id === stylist.id)
-              .map(appointment => {
-                const service = services.find(s => s.id === appointment.service_id);
-                const top = getAppointmentPosition(appointment.start_time);
-                const duration = getAppointmentDuration(appointment.start_time, appointment.end_time);
-                
-                // Create normalized dates for display to ensure correct time formatting
-                const startTimeDate = normalizeDateTime(appointment.start_time);
-                const endTimeDate = normalizeDateTime(appointment.end_time);
-                
-                return (
-                  <AppointmentCard
-                    key={appointment.id}
-                    duration={duration}
-                    style={{ top }}
-                    onClick={(e) => {
-                      // Prevent click when dragging is finished
-                      if (!draggedAppointment) {
-                        handleAppointmentClick(appointment);
-                      }
-                    }}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, appointment)}
-                  >
-                    <Typography variant="caption" fontWeight="bold">
-                      {appointment.clients?.full_name || 'Unknown'}
-                    </Typography>
-                    <Typography variant="caption">
-                      {service?.name || 'Unknown Service'}
-                    </Typography>
-                    <Typography variant="caption">
-                      {format(startTimeDate, 'h:mm a')} - {format(endTimeDate, 'h:mm a')}
-                    </Typography>
-                  </AppointmentCard>
-                );
-              })}
-            
-            {/* Stylist Breaks */}
-            {getStylistBreaks(stylist.id).map((breakItem: StylistBreak) => {
-              const breakDate = new Date(breakItem.startTime);
-              // Only show breaks for the current day
-              if (!isSameDay(breakDate, currentDate)) return null;
-              
-              // Normalize the break times to ensure consistent handling
-              const breakStartTime = normalizeDateTime(breakItem.startTime);
-              const breakEndTime = normalizeDateTime(breakItem.endTime);
-              
-              // Log the break times for debugging
-              console.log('Break rendering:', {
-                id: breakItem.id,
-                startISOString: breakItem.startTime,
-                endISOString: breakItem.endTime,
-                normalizedStartTime: breakStartTime.toLocaleTimeString(),
-                normalizedEndTime: breakEndTime.toLocaleTimeString(),
-                startHour: breakStartTime.getHours(),
-                startMinute: breakStartTime.getMinutes()
-              });
-
-              const top = getAppointmentPosition(breakItem.startTime);
-              const height = getAppointmentDuration(breakItem.startTime, breakItem.endTime);
-
-              return (
-                <BreakBlock
-                  key={breakItem.id}
-                  sx={{
-                    top: `${top}px`,
-                    height: `${height}px`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'flex-start',
-                    gap: 0.5
-                  }}
-                >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>
-                    Break Time
-                  </Typography>
-                  <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                    {format(breakStartTime, 'h:mm a')} - {format(breakEndTime, 'h:mm a')}
-                  </Typography>
-                  {breakItem.reason && (
-                    <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                      {breakItem.reason}
-                    </Typography>
-                  )}
-                </BreakBlock>
-              );
-            })}
-          </StylistColumn>
-        ))}
-      </ScheduleGrid>
+              Clear Search
+            </Button>
+          </Box>
+        )}
+      </DayViewContent>
+      
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity="success" sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
       
       {/* Edit Appointment Dialog */}
       <Dialog open={editDialogOpen} onClose={handleEditDialogClose} maxWidth="sm" fullWidth>
@@ -1126,7 +1625,7 @@ export default function StylistDayView({
                   label="Start Time"
                 >
                   {timeOptions.map((option) => (
-                    <MenuItem key={`break-start-${option.value}`} value={option.value}>
+                    <MenuItem key={`start-${option.value}`} value={option.value}>
                       {option.label}
                     </MenuItem>
                   ))}
@@ -1142,7 +1641,7 @@ export default function StylistDayView({
                   label="End Time"
                 >
                   {timeOptions.map((option) => (
-                    <MenuItem key={`break-end-${option.value}`} value={option.value}>
+                    <MenuItem key={`end-${option.value}`} value={option.value}>
                       {option.label}
                     </MenuItem>
                   ))}
@@ -1154,8 +1653,9 @@ export default function StylistDayView({
                 label="Reason"
                 value={breakFormData.reason}
                 onChange={(e) => setBreakFormData({ ...breakFormData, reason: e.target.value })}
+                multiline
+                rows={3}
                 fullWidth
-                placeholder="Optional: Enter reason for break"
               />
             </Grid>
           </Grid>
@@ -1167,17 +1667,6 @@ export default function StylistDayView({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar 
-        open={snackbarOpen} 
-        autoHideDuration={4000} 
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={handleSnackbarClose} severity="warning">
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
     </DayViewContainer>
   );
-} 
+}

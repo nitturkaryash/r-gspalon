@@ -2,6 +2,42 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
 import { StylistBreak } from './useStylists'
+import axios from 'axios'
+
+// Setup axios instance with base URL and error handling
+const api = axios.create({
+  // Use either your API URL or a default
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  }
+});
+
+// Add request and response interceptors
+api.interceptors.request.use(
+  config => {
+    // You could add auth tokens here if needed
+    return config;
+  },
+  error => Promise.reject(error)
+);
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    // Log error and show toast
+    console.error('API Error:', error);
+    if (error.response) {
+      toast.error(`Error: ${error.response.data.message || 'Something went wrong'}`);
+    } else if (error.request) {
+      toast.error('Network Error: No response received');
+    } else {
+      toast.error(`Error: ${error.message}`);
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Mock data types
 interface Client {
@@ -25,14 +61,15 @@ interface Stylist {
 
 export interface Appointment {
   id: string;
-  client_id: string;
+  client_id?: string;
+  clients?: any;
   stylist_id: string;
   service_id: string;
   start_time: string;
   end_time: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
-  paid: boolean;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  googleCalendarId?: string; // Add Google Calendar ID field
 }
 
 // Mock data
@@ -188,6 +225,47 @@ const checkBreakConflict = (
       (appointmentStart <= breakStart && appointmentEnd >= breakEnd) // Break is within appointment
     );
   });
+};
+
+// Update the updateAppointmentGoogleCalendarId function to use axios with localStorage fallback
+const updateAppointmentGoogleCalendarId = async (appointmentId: string, googleCalendarId: string) => {
+  try {
+    const queryClient = useQueryClient();
+    
+    try {
+      // Try to update via API first
+      await api.patch(`/appointments/${appointmentId}`, { 
+        googleCalendarId 
+      });
+    } catch (apiError) {
+      console.log('API update failed, using localStorage fallback', apiError);
+      
+      // Fallback to localStorage
+      const appointments = JSON.parse(localStorage.getItem('appointments') || '[]');
+      const updatedAppointments = appointments.map((appointment: Appointment) => 
+        appointment.id === appointmentId 
+          ? { ...appointment, googleCalendarId } 
+          : appointment
+      );
+      localStorage.setItem('appointments', JSON.stringify(updatedAppointments));
+    }
+    
+    // Update React Query cache regardless of storage method
+    queryClient.setQueryData<Appointment[]>(['appointments'], (oldData) => {
+      if (!oldData) return [];
+      
+      return oldData.map(appointment => 
+        appointment.id === appointmentId 
+          ? { ...appointment, googleCalendarId } 
+          : appointment
+      );
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating appointment Google Calendar ID:', error);
+    throw error;
+  }
 };
 
 export function useAppointments() {
@@ -352,5 +430,6 @@ export function useAppointments() {
     createAppointment: createAppointment.mutate,
     updateAppointment: updateAppointment.mutate,
     deleteAppointment: deleteAppointment.mutate,
+    updateAppointmentGoogleCalendarId,
   };
 } 
