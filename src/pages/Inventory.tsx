@@ -32,6 +32,7 @@ import {
   Analytics as AnalyticsIcon,
   Sync as SyncIcon,
   Receipt as ReceiptIcon,
+  FileDownload as FileDownloadIcon,
 } from '@mui/icons-material'
 import { Link, useNavigate } from 'react-router-dom'
 import { useCollections } from '../hooks/useCollections'
@@ -43,6 +44,7 @@ import StockDataExtractor from '../components/inventory/StockDataExtractor'
 import TransactionConverter from '../components/inventory/TransactionConverter'
 import InventoryBalanceReport from '../components/inventory/InventoryBalanceReport'
 import StockInsights from '../components/inventory/StockInsights'
+import InventoryExport from '../components/inventory/InventoryExport'
 
 // Initial form data for collections
 const initialFormData = {
@@ -68,7 +70,7 @@ function TabPanel(props: TabPanelProps) {
       {...other}
     >
       {value === index && (
-        <Box sx={{ pt: 3 }}>
+        <Box sx={{ pt: 2 }}>
           {children}
         </Box>
       )}
@@ -156,10 +158,10 @@ export default function Inventory() {
       />
 
       <Paper sx={{ 
-        borderRadius: theme.shape.borderRadius, 
+        borderRadius: 1, 
         overflow: 'hidden',
-        boxShadow: theme.shadows[2],
-        mb: 4 
+        boxShadow: 1,
+        mb: 3
       }}>
         <Tabs
           value={tabValue}
@@ -168,38 +170,46 @@ export default function Inventory() {
           variant="scrollable"
           scrollButtons="auto"
           sx={{
-            backgroundColor: theme.palette.background.default,
+            backgroundColor: theme.palette.background.paper,
             borderBottom: 1,
             borderColor: 'divider',
             '& .MuiTab-root': {
-              minHeight: 64,
-              py: 2,
+              minHeight: 48,
+              py: 1.5,
+              textTransform: 'none',
+              fontWeight: 500,
             },
           }}
         >
           <Tab 
-            icon={<InventoryIcon />} 
+            icon={<InventoryIcon fontSize="small" />} 
             label="Inventory Balance" 
             iconPosition="start"
             {...a11yProps(0)} 
           />
           <Tab 
-            icon={<AnalyticsIcon />} 
+            icon={<AnalyticsIcon fontSize="small" />} 
             label="Insights & Analytics" 
             iconPosition="start"
             {...a11yProps(1)} 
           />
           <Tab 
-            icon={<SyncIcon />} 
+            icon={<SyncIcon fontSize="small" />} 
             label="Data Import" 
             iconPosition="start"
             {...a11yProps(2)} 
           />
           <Tab 
-            icon={<ReceiptIcon />} 
+            icon={<SwapHorizIcon fontSize="small" />} 
             label="Transactions" 
             iconPosition="start"
             {...a11yProps(3)} 
+          />
+          <Tab 
+            icon={<FileDownloadIcon fontSize="small" />} 
+            label="Export Data" 
+            iconPosition="start"
+            {...a11yProps(4)} 
           />
         </Tabs>
 
@@ -216,19 +226,47 @@ export default function Inventory() {
 
           {/* Data Import Tab */}
           <TabPanel value={tabValue} index={2}>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Import Stock Data
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-              Upload your Excel inventory data to keep your stock information up-to-date.
-              Ensure your Excel file follows the required format with the appropriate sheets for purchases, sales, and stock balance.
-            </Typography>
-            <StockDataExtractor />
+            <Grid container spacing={4}>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ mb: 3 }}>
+                  Import Stock Data
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                  Upload your Excel inventory data to keep your stock information up-to-date.
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <StockDataExtractor />
+              </Grid>
+            </Grid>
           </TabPanel>
 
           {/* Transactions Tab */}
           <TabPanel value={tabValue} index={3}>
             <TransactionConverter />
+          </TabPanel>
+          
+          {/* Export Data Tab */}
+          <TabPanel value={tabValue} index={4}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Export Inventory Data
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                Export your inventory transactions data to Excel for analysis or record-keeping.
+              </Typography>
+              
+              <Button
+                component={Link}
+                to="/inventory/export"
+                variant="contained"
+                startIcon={<FileDownloadIcon />}
+                sx={{ mt: 2 }}
+              >
+                Go to Export Page
+              </Button>
+            </Box>
           </TabPanel>
         </Box>
       </Paper>
