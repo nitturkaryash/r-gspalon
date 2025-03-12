@@ -45,6 +45,7 @@ import {
   Stack,
   Switch,
   FormControlLabel,
+  SelectChangeEvent,
 } from '@mui/material'
 import { 
   Add as AddIcon, 
@@ -289,42 +290,41 @@ export default function POS() {
   // When using split payment, we need to calculate tax differently
   const { tax, total } = useMemo(() => {
     if (isSplitPayment && splitPayments.length > 0) {
-      // Check if we have a mix of cash and other payment methods
       const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
       const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
       const hasMixedPayments = hasCash && hasNonCash;
       
-      // Calculate total payment amount
       const totalPaymentAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
       
       let calculatedTax = 0;
-      
-      if (hasMixedPayments) {
-        // If mix of cash and non-cash, apply GST to the total amount
-        calculatedTax = Math.round(totalPaymentAmount * 0.18 / 1.18);
-      } else if (hasNonCash) {
-        // If only non-cash payments, apply GST
-        calculatedTax = Math.round(totalPaymentAmount * 0.18 / 1.18);
+      if (hasMixedPayments || hasNonCash) {
+        calculatedTax = Math.round(orderSubtotal * 0.18);
       }
-      // If only cash payments, tax remains 0
       
-      // Calculate total from the orderSubtotal plus tax minus discount
       return {
         tax: calculatedTax,
         total: orderSubtotal + calculatedTax - walkInDiscount
       };
     } else {
-      // Standard calculation for single payment method
       return calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
     }
   }, [orderSubtotal, walkInDiscount, walkInPaymentMethod, isSplitPayment, splitPayments]);
   
+  // Function to calculate total paid
+  const calculateTotalPaid = (payments: PaymentDetail[]) => {
+    return payments.reduce((sum, payment) => sum + payment.amount, 0);
+  };
+
+  // Function to calculate pending amount accurately
+  const calculateAccuratePendingAmount = (total: number, payments: PaymentDetail[]) => {
+    const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    return Math.max(0, total - totalPaid);
+  };
+
   // Update pending amount when split payments change
   useEffect(() => {
     if (isSplitPayment) {
-      const amountPaid = getAmountPaid();
-      // This is the proper calculation - total should be the order amount
-      setPendingAmount(Math.max(0, total - amountPaid));
+      setPendingAmount(calculateAccuratePendingAmount(total, splitPayments));
     }
   }, [splitPayments, total, isSplitPayment]);
 
@@ -453,7 +453,7 @@ export default function POS() {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
-  // Handle adding a new payment in split payment mode
+  // Update handleAddSplitPayment to use the new function
   const handleAddSplitPayment = () => {
     // Validation for maximum 2 payment methods
     if (splitPayments.length >= 2) {
@@ -476,8 +476,25 @@ export default function POS() {
       payment_date: new Date().toISOString(),
     };
     
-    setSplitPayments([...splitPayments, newPayment]);
+    const updatedSplitPayments = [...splitPayments, newPayment];
+    setSplitPayments(updatedSplitPayments);
     setNewPaymentAmount(0);
+
+    // Calculate total paid
+    const totalPaid = calculateTotalPaid(updatedSplitPayments);
+
+    console.log('Total Paid:', totalPaid);
+    console.log('Total:', total);
+    console.log('Pending Amount before update:', pendingAmount);
+
+    // Set pending amount to zero if total paid covers the total
+    if (totalPaid >= total) {
+      setPendingAmount(0);
+    } else {
+      setPendingAmount(calculateAccuratePendingAmount(total, updatedSplitPayments));
+    }
+
+    console.log('Pending Amount after update:', pendingAmount);
   };
   
   // Remove a payment from the split payments list
@@ -915,6 +932,16 @@ export default function POS() {
     );
   };
 
+  const handlePaymentMethodChange = (event: SelectChangeEvent<PaymentMethod>) => {
+    const selectedMethod = event.target.value as PaymentMethod;
+    setNewPaymentMethod(selectedMethod);
+    
+    // If this is the second payment method, set the amount to the pending amount
+    if (splitPayments.length === 1) {
+      setNewPaymentAmount(pendingAmount);
+    }
+  };
+
   if (isLoading || loadingStylists || loadingServices || loadingClients || loadingServiceCollections || loadingCollectionServices || loadingCollections) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -1164,7 +1191,7 @@ export default function POS() {
                                   <InputLabel>Payment Method</InputLabel>
                                   <Select
                                     value={newPaymentMethod}
-                                    onChange={(e) => setNewPaymentMethod(e.target.value as PaymentMethod)}
+                                    onChange={handlePaymentMethodChange}
                                     label="Payment Method"
                                   >
                                     {PAYMENT_METHODS.map((method) => {
