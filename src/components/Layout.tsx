@@ -31,6 +31,7 @@ import {
   Storefront,
   Category,
   CardMembership,
+  Inventory,
   Logout,
 } from '@mui/icons-material'
 import * as React from 'react'
@@ -59,7 +60,7 @@ const menuLinks: MenuLink[] = [
   { text: 'Stylists', path: '/stylists', icon: <Person /> },
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
-  { text: 'Inventory', path: '/inventory', icon: <Storefront /> },
+  { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
   { text: 'Members', path: '/members', icon: <CardMembership /> },
 ]
 
@@ -292,4 +293,4 @@ export default function Layout({ children }: LayoutProps) {
       </Box>
     </Box>
   )
-} 
+}

@@ -1,29 +1,32 @@
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import Layout from './components/Layout'
-import { DevRefresher } from './components/DevRefresher'
+import React, { lazy, Suspense } from 'react';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
-import { theme } from './theme'; // Your theme configuration
-import React, { lazy, Suspense } from 'react';
+import Layout from './components/Layout';
+import { DevRefresher } from './components/DevRefresher';
+import Login from './pages/Login';
+import { theme } from './theme';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import Dashboard from './pages/Dashboard'
-import Clients from './pages/Clients'
-import Orders from './pages/Orders'
-import Inventory from './pages/Inventory'
-import CollectionDetail from './pages/CollectionDetail'
-import ServiceCollections from './pages/ServiceCollections'
-import ServiceCollectionDetail from './pages/ServiceCollectionDetail'
-import Members from './pages/Members'
-import Login from './pages/Login'
-import { AuthProvider } from './hooks/useAuth'
-import ProtectedRoute from './components/ProtectedRoute'
 import { CircularProgress, Box } from '@mui/material';
+import { AuthProvider } from './hooks/useAuth'; // Using the hook-based auth from main
+import ProtectedRoute from './components/ProtectedRoute';
 
-// Lazy load larger pages
+// Eagerly loaded pages
+import Dashboard from './pages/Dashboard';
+import Members from './pages/Members';
+import Inventory from './pages/Inventory';
+
+// Lazy-loaded components
 const Appointments = lazy(() => import('./pages/Appointments'));
+const Clients = lazy(() => import('./pages/Clients'));
 const Stylists = lazy(() => import('./pages/Stylists'));
+const ServiceCollections = lazy(() => import('./pages/ServiceCollections'));
+const ServiceCollectionDetail = lazy(() => import('./pages/ServiceCollectionDetail'));
+const Orders = lazy(() => import('./pages/Orders'));
 const POS = lazy(() => import('./pages/POS'));
+const CollectionDetail = lazy(() => import('./pages/CollectionDetail'));
+const InventoryExportPage = lazy(() => import('./pages/InventoryExportPage'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -61,17 +64,19 @@ function App() {
             <Route path="stylists" element={<Stylists />} />
             <Route path="orders" element={<Orders />} />
             <Route path="pos" element={<POS />} />
-            <Route path="inventory" element={<Inventory />} />
-            <Route path="inventory/:id" element={<CollectionDetail />} />
             <Route path="members" element={<Members />} />
+            <Route path="inventory" element={<Inventory />} />
+            <Route path="inventory/export" element={<InventoryExportPage />} />
+            <Route path="inventory/:id" element={<CollectionDetail />} />
           </Route>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>
       
       {/* Only renders in development */}
       <DevRefresher />
     </ThemeProvider>
-  )
+  );
 }
 
-export default App
+export default App;
