@@ -36,19 +36,24 @@ import {
   Spa as SpaIcon,
   Inventory as InventoryIcon,
   ShoppingBag as ShoppingBagIcon,
+  PaymentRounded as PaymentIcon,
 } from '@mui/icons-material'
 import { useOrders } from '../hooks/useOrders'
 import { formatCurrency } from '../utils/format'
 import { AccessibleDialog } from '../components/AccessibleDialog'
 import { exportToCSV, exportToPDF, formatOrdersForExport, orderExportHeaders } from '../utils/exportUtils'
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PaymentMethod } from '../hooks/usePOS'
+import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PaymentMethod, usePOS, PaymentDetail } from '../hooks/usePOS'
+import CompletePaymentDialog from '../components/orders/CompletePaymentDialog'
 
 export default function Orders() {
   const { orders, isLoading } = useOrders()
+  const { updateOrderPayment } = usePOS()
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [paymentFilter, setPaymentFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   const handleViewDetails = (order: any) => {
     setSelectedOrder(order)
@@ -92,28 +97,44 @@ export default function Orders() {
     return 'service';
   };
 
-  // Filter orders based on search query and payment method filter
+  // Handler for opening the payment completion dialog
+  const handleCompletePayment = (order: any) => {
+    setSelectedOrder(order)
+    setPaymentDialogOpen(true)
+  }
+
+  // Handler for processing the payment update
+  const handlePaymentUpdate = async (orderId: string, paymentDetails: PaymentDetail) => {
+    await updateOrderPayment({ orderId, paymentDetails })
+  }
+
+  // Filter orders based on search query, payment method filter, and status filter
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
     
     return orders.filter(order => {
       // Payment method filter
-      const paymentMethodMatch = paymentFilter === 'all' || order.payment_method === paymentFilter;
+      if (paymentFilter !== 'all' && order.payment_method !== paymentFilter) {
+        return false;
+      }
       
-      // Search query filter (case insensitive)
-      const query = searchQuery.toLowerCase();
-      const searchMatch = 
-        !searchQuery || 
-        order.id.toLowerCase().includes(query) || 
-        order.client_name.toLowerCase().includes(query) || 
-        order.stylist_name.toLowerCase().includes(query) ||
-        order.status.toLowerCase().includes(query) ||
-        order.payment_method.toLowerCase().includes(query) ||
-        order.total.toString().includes(query);
+      // Status filter
+      if (statusFilter !== 'all' && order.status !== statusFilter) {
+        return false;
+      }
       
-      return paymentMethodMatch && searchMatch;
+      // Search query
+      const searchLower = searchQuery.toLowerCase();
+      return (
+        order.client_name.toLowerCase().includes(searchLower) ||
+        order.id.toLowerCase().includes(searchLower) ||
+        order.stylist_name.toLowerCase().includes(searchLower) ||
+        order.services.some((service: any) => 
+          service.service_name.toLowerCase().includes(searchLower)
+        )
+      );
     });
-  }, [orders, searchQuery, paymentFilter]);
+  }, [orders, searchQuery, paymentFilter, statusFilter]);
 
   // Render purchase type chip
   const renderPurchaseTypeChip = (type: string) => {
@@ -233,6 +254,21 @@ export default function Orders() {
               ))}
             </Select>
           </FormControl>
+          
+          <FormControl sx={{ minWidth: '200px' }} size="small">
+            <InputLabel id="status-filter-label">Status</InputLabel>
+            <Select
+              labelId="status-filter-label"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              label="Status"
+            >
+              <MenuItem value="all">All Statuses</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
+            </Select>
+          </FormControl>
         </Box>
       )}
       
@@ -245,10 +281,11 @@ export default function Orders() {
                 <TableCell>Date</TableCell>
                 <TableCell>Customer</TableCell>
                 <TableCell>Stylist</TableCell>
-                <TableCell>Purchase Type</TableCell>
-                <TableCell>Total</TableCell>
+                <TableCell>Items</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Payment</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Payment Method</TableCell>
+                <TableCell>Total</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -265,30 +302,73 @@ export default function Orders() {
                   </TableCell>
                   <TableCell>{order.client_name}</TableCell>
                   <TableCell>{order.stylist_name}</TableCell>
+                  <TableCell>{order.services.length}</TableCell>
                   <TableCell>
                     {renderPurchaseTypeChip(getPurchaseType(order))}
                   </TableCell>
-                  <TableCell>{formatCurrency(order.total)}</TableCell>
                   <TableCell>
-                    <Chip 
-                      label={order.status} 
-                      color={order.status === 'completed' ? 'success' : 'warning'} 
-                      size="small" 
+                    <Chip
+                      size="small"
+                      label={PAYMENT_METHOD_LABELS[order.payment_method]}
+                    />
+                    {order.is_split_payment && (
+                      <Chip
+                        size="small"
+                        label="Split"
+                        color="secondary"
+                        sx={{ ml: 0.5 }}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                      color={
+                        order.status === 'completed' ? 'success' :
+                        order.status === 'pending' ? 'warning' :
+                        'error'
+                      }
                     />
                   </TableCell>
                   <TableCell>
-                    {PAYMENT_METHOD_LABELS[order.payment_method as PaymentMethod] || 
-                      order.payment_method.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                    {formatCurrency(order.total)}
+                    {order.pending_amount > 0 && (
+                      <Box sx={{ mt: 0.5 }}>
+                        <Chip
+                          size="small"
+                          label={`Pending: ${formatCurrency(order.pending_amount)}`}
+                          color="error"
+                          variant="outlined"
+                        />
+                      </Box>
+                    )}
                   </TableCell>
                   <TableCell align="right">
-                    <IconButton 
-                      color="primary" 
-                      onClick={() => handleViewDetails(order)}
-                      size="small"
-                      aria-label={`View details for order ${order.id.substring(0, 8)}`}
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      <Tooltip title="View Details">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleViewDetails(order)}
+                          aria-label="view order details"
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      
+                      {order.status === 'pending' && order.pending_amount > 0 && (
+                        <Tooltip title="Complete Payment">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleCompletePayment(order)}
+                            aria-label="complete payment"
+                            color="primary"
+                          >
+                            <PaymentIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}
@@ -405,6 +485,14 @@ export default function Orders() {
           </Grid>
         </AccessibleDialog>
       )}
+      
+      {/* Complete payment dialog */}
+      <CompletePaymentDialog 
+        open={paymentDialogOpen}
+        onClose={() => setPaymentDialogOpen(false)}
+        order={selectedOrder}
+        onCompletePayment={handlePaymentUpdate}
+      />
     </Box>
   )
 } 

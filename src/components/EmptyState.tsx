@@ -1,21 +1,20 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { Box, Typography, Button, Paper } from '@mui/material';
-import { SvgIconComponent } from '@mui/icons-material';
 
 interface EmptyStateProps {
   title: string;
   description: string;
-  icon?: React.ReactNode;
   buttonText?: string;
   buttonAction?: () => void;
+  icon?: ReactNode;
 }
 
 const EmptyState: React.FC<EmptyStateProps> = ({
   title,
   description,
-  icon,
   buttonText,
   buttonAction,
+  icon
 }) => {
   return (
     <Paper 
@@ -31,20 +30,25 @@ const EmptyState: React.FC<EmptyStateProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        py: 8
+        py: 8,
+        px: 2,
+        background: 'rgba(255, 255, 255, 0.05)',
       }}
     >
       {icon && (
-        <Box sx={{ mb: 2, color: 'text.secondary', opacity: 0.6 }}>
+        <Box sx={{ mb: 2, color: 'rgba(255, 215, 0, 0.5)', opacity: 0.6 }}>
           {icon}
         </Box>
       )}
       
-      <Typography variant="h6" gutterBottom>
+      <Typography variant="h5" sx={{ mb: 1, color: '#FFD700' }}>
         {title}
       </Typography>
       
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3, maxWidth: 500, mx: 'auto' }}>
+      <Typography 
+        variant="body1" 
+        sx={{ mb: 3, color: 'rgba(255, 255, 255, 0.7)', maxWidth: 500, mx: 'auto' }}
+      >
         {description}
       </Typography>
       
@@ -52,7 +56,14 @@ const EmptyState: React.FC<EmptyStateProps> = ({
         <Button 
           variant="contained" 
           onClick={buttonAction}
-          sx={{ minWidth: 200 }}
+          sx={{
+            minWidth: 200,
+            background: 'linear-gradient(45deg, #B8860B, #FFD700)',
+            color: 'black',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #DAA520, #FFF8DC)',
+            },
+          }}
         >
           {buttonText}
         </Button>
@@ -61,4 +72,4 @@ const EmptyState: React.FC<EmptyStateProps> = ({
   );
 };
 
-export default EmptyState; 
+export default EmptyState;

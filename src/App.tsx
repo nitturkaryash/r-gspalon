@@ -1,18 +1,23 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
+import { CssBaseline } from '@mui/material';
 import Layout from './components/Layout';
+import { DevRefresher } from './components/DevRefresher';
 import Login from './pages/Login';
-import PageLoader from './components/PageLoader';
 import { theme } from './theme';
-import { AuthProvider } from './lib/auth.tsx';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { CircularProgress, Box } from '@mui/material';
+import { AuthProvider } from './hooks/useAuth'; // Using the hook-based auth from main
 import ProtectedRoute from './components/ProtectedRoute';
+
+// Eagerly loaded pages
 import Dashboard from './pages/Dashboard';
 import Members from './pages/Members';
 import Inventory from './pages/Inventory';
 
-// Lazy-loaded components for better performance
+// Lazy-loaded components
 const Appointments = lazy(() => import('./pages/Appointments'));
 const Clients = lazy(() => import('./pages/Clients'));
 const Stylists = lazy(() => import('./pages/Stylists'));
@@ -23,66 +28,54 @@ const POS = lazy(() => import('./pages/POS'));
 const CollectionDetail = lazy(() => import('./pages/CollectionDetail'));
 const InventoryExportPage = lazy(() => import('./pages/InventoryExportPage'));
 
+// Loading fallback component
+const PageLoader = () => (
+  <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+    <CircularProgress />
+  </Box>
+);
+
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route
-          path="appointments"
-          element={
-            <Suspense fallback={<PageLoader />}>
-              <Appointments />
-            </Suspense>
-          }
-        />
-        <Route path="clients" element={
-          <Suspense fallback={<PageLoader />}>
-            <Clients />
-          </Suspense>
-        } />
-        <Route path="stylists" element={
-          <Suspense fallback={<PageLoader />}>
-            <Stylists />
-          </Suspense>
-        } />
-        <Route path="services" element={
-          <Suspense fallback={<PageLoader />}>
-            <ServiceCollections />
-          </Suspense>
-        } />
-        <Route path="services/:id" element={
-          <Suspense fallback={<PageLoader />}>
-            <ServiceCollectionDetail />
-          </Suspense>
-        } />
-        <Route path="orders" element={
-          <Suspense fallback={<PageLoader />}>
-            <Orders />
-          </Suspense>
-        } />
-        <Route path="pos" element={
-          <Suspense fallback={<PageLoader />}>
-            <POS />
-          </Suspense>
-        } />
-        <Route path="members" element={<Members />} />
-        <Route path="inventory" element={<Inventory />} />
-        <Route path="inventory/export" element={
-          <Suspense fallback={<PageLoader />}>
-            <InventoryExportPage />
-          </Suspense>
-        } />
-        <Route path="inventory/:id" element={
-          <Suspense fallback={<PageLoader />}>
-            <CollectionDetail />
-          </Suspense>
-        } />
-      </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ToastContainer position="top-right" theme="dark" />
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Suspense fallback={<PageLoader />}>
+                    <Outlet />
+                  </Suspense>
+                </Layout>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="appointments" element={<Appointments />} />
+            <Route path="clients" element={<Clients />} />
+            <Route path="services" element={<ServiceCollections />} />
+            <Route path="services/:id" element={<ServiceCollectionDetail />} />
+            <Route path="stylists" element={<Stylists />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="pos" element={<POS />} />
+            <Route path="members" element={<Members />} />
+            <Route path="inventory" element={<Inventory />} />
+            <Route path="inventory/export" element={<InventoryExportPage />} />
+            <Route path="inventory/:id" element={<CollectionDetail />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AuthProvider>
+      
+      {/* Only renders in development */}
+      <DevRefresher />
+    </ThemeProvider>
   );
 }
 

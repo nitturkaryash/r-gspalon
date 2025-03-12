@@ -18,7 +18,7 @@ import {
   Phone as PhoneIcon,
   AttachMoney as AttachMoneyIcon,
 } from '@mui/icons-material';
-import { Member } from '../../hooks/useMembers';
+import { Member } from '../../types/member';
 import { format } from 'date-fns';
 import { styled } from '@mui/material/styles';
 
