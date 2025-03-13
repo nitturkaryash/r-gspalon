@@ -1,211 +1,146 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
   Box,
+  Container,
   Typography,
   Paper,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  IconButton,
+  Tabs,
+  Tab,
   Grid,
-  Card,
-  CardContent,
-  CardActions,
-  Divider,
-  CircularProgress,
+  Button,
+  useTheme
 } from '@mui/material'
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   ArrowForward as ArrowForwardIcon,
+  Inventory as InventoryIcon,
+  FileDownload as FileDownloadIcon,
 } from '@mui/icons-material'
-import { Link, useNavigate } from 'react-router-dom'
-import { useCollections } from '../hooks/useCollections'
-import type { Collection } from '../models/inventoryTypes'
+import { Link as RouterLink } from 'react-router-dom'
+import PageHeader from '../components/PageHeader'
+import InventoryBalanceReport from '../components/inventory/InventoryBalanceReport'
 
-// Initial form data for collections
-const initialFormData = {
-  name: '',
-  description: '',
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`inventory-tabpanel-${index}`}
+      aria-labelledby={`inventory-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ pt: 2 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+function a11yProps(index: number) {
+  return {
+    id: `inventory-tab-${index}`,
+    'aria-controls': `inventory-tabpanel-${index}`,
+  };
 }
 
 export default function Inventory() {
-  const { collections, isLoading, createCollection, updateCollection, deleteCollection } = useCollections()
-  const [open, setOpen] = useState(false)
-  const [formData, setFormData] = useState(initialFormData)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const navigate = useNavigate()
+  const [tabValue, setTabValue] = useState(0);
+  const theme = useTheme();
 
-  const handleOpen = () => setOpen(true)
-  const handleClose = () => {
-    setOpen(false)
-    setFormData(initialFormData)
-    setEditingId(null)
-  }
-
-  const handleEdit = (collection: Collection) => {
-    setFormData({
-      name: collection.name,
-      description: collection.description,
-    })
-    setEditingId(collection.id)
-    setOpen(true)
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Validate form
-    if (!formData.name.trim()) {
-      return
-    }
-    
-    if (editingId) {
-      updateCollection({ ...formData, id: editingId })
-    } else {
-      createCollection(formData)
-    }
-    
-    handleClose()
-  }
-
-  const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this collection? All products in this collection will also be deleted.')) {
-      deleteCollection(id)
-    }
-  }
-
-  const handleCollectionClick = (id: string) => {
-    navigate(`/inventory/${id}`)
-  }
-
-  if (isLoading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <CircularProgress />
-      </Box>
-    )
-  }
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h1">Inventory Collections</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpen}
-          sx={{ height: 'fit-content' }}
+    <Container maxWidth="xl">
+      <PageHeader 
+        title="Inventory Management"
+      />
+
+      <Paper sx={{ borderRadius: 1, overflow: 'hidden', boxShadow: 1 }}>
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          aria-label="inventory tabs"
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            px: 2,
+            '& .MuiTab-root': {
+              minHeight: 64,
+              textTransform: 'none',
+              fontWeight: 500,
+            },
+          }}
         >
-          Add Collection
-        </Button>
-      </Box>
+          <Tab 
+            icon={<InventoryIcon fontSize="small" />} 
+            label="Inventory Balance" 
+            iconPosition="start"
+            {...a11yProps(0)} 
+          />
+          <Tab 
+            icon={<FileDownloadIcon fontSize="small" />} 
+            label="Export Data" 
+            iconPosition="start"
+            {...a11yProps(1)} 
+          />
+        </Tabs>
 
-      {collections?.length ? (
-        <Grid container spacing={3}>
-          {collections.map((collection) => (
-            <Grid item xs={12} sm={6} md={4} key={collection.id}>
-              <Card sx={{ 
-                height: '100%', 
-                display: 'flex', 
-                flexDirection: 'column',
-                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 6,
-                  cursor: 'pointer',
-                },
-              }} onClick={() => handleCollectionClick(collection.id)}>
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" component="div" gutterBottom>
-                    {collection.name}
+        <Box sx={{ p: 3 }}>
+          {/* Inventory Balance Tab */}
+          <TabPanel value={tabValue} index={0}>
+            <InventoryBalanceReport />
+          </TabPanel>
+          
+          {/* Export Data Tab */}
+          <TabPanel value={tabValue} index={1}>
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ mb: 3 }}>
+                  Export Inventory Data
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+                  Export your inventory data to Excel for analysis or record-keeping.
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Export Transactions
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {collection.description}
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Export your inventory transactions data to Excel for analysis or record-keeping.
                   </Typography>
-                </CardContent>
-                <Divider />
-                <CardActions sx={{ justifyContent: 'space-between', p: 2 }}>
-                  <Box>
-                    <IconButton 
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleEdit(collection)
-                      }}
-                      color="primary"
-                      size="small"
+                  <Box sx={{ mt: 'auto' }}>
+                    <Button
+                      component={RouterLink}
+                      to="/inventory/export"
+                      variant="outlined"
+                      endIcon={<ArrowForwardIcon />}
                     >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton 
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDelete(collection.id)
-                      }}
-                      color="error"
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                      Export Transactions
+                    </Button>
                   </Box>
-                  <IconButton 
-                    color="primary"
-                    component={Link}
-                    to={`/inventory/${collection.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ArrowForwardIcon />
-                  </IconButton>
-                </CardActions>
-              </Card>
+                </Paper>
+              </Grid>
             </Grid>
-          ))}
-        </Grid>
-      ) : (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography variant="body1" color="text.secondary">
-            No collections found. Click "Add Collection" to create your first one.
-          </Typography>
-        </Paper>
-      )}
-
-      {/* Add/Edit Collection Dialog */}
-      <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
-        <form onSubmit={handleSubmit}>
-          <DialogTitle>
-            {editingId ? 'Edit Collection' : 'Add New Collection'}
-          </DialogTitle>
-          <DialogContent>
-            <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="Name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                multiline
-                rows={3}
-                fullWidth
-              />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleClose}>Cancel</Button>
-            <Button type="submit" variant="contained">
-              {editingId ? 'Update' : 'Create'}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-    </Box>
+          </TabPanel>
+        </Box>
+      </Paper>
+    </Container>
   )
 } 

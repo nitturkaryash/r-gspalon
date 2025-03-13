@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Box,
@@ -41,6 +41,11 @@ import {
   StepLabel,
   Alert,
   Snackbar,
+  Collapse,
+  Stack,
+  Switch,
+  FormControlLabel,
+  SelectChangeEvent,
 } from '@mui/material'
 import { 
   Add as AddIcon, 
@@ -58,11 +63,15 @@ import {
   ContentCut as ContentCutIcon,
   Search as SearchIcon,
   ShoppingBasket as ShoppingBasketIcon,
+  DeleteOutlined,
+  CreditCard,
+  Payment,
+  MoneyOff,
 } from '@mui/icons-material'
 import { DatePicker, TimePicker } from '@mui/x-date-pickers'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
-import { usePOS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PaymentMethod } from '../hooks/usePOS'
+import { usePOS, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PaymentMethod, PaymentDetail } from '../hooks/usePOS'
 import { useStylists } from '../hooks/useStylists'
 import { useServices } from '../hooks/useServices'
 import { useClients } from '../hooks/useClients'
@@ -71,6 +80,7 @@ import { useCollectionServices } from '../hooks/useCollectionServices'
 import { useCollections } from '../hooks/useCollections'
 import { formatCurrency } from '../utils/format'
 import { playCashRegisterSound } from '../assets/sounds/cash-register'
+import { toast } from 'react-toastify'
 
 // Tab interface for switching between appointment payments and walk-in sales
 interface TabPanelProps {
@@ -131,9 +141,6 @@ export default function POS() {
   const location = useLocation();
   const appointmentData = location.state?.appointmentData;
   
-  // Tab state
-  const [tabValue, setTabValue] = useState(appointmentData ? 1 : 0); // Set to appointment tab if data exists
-  
   // Data hooks
   const { 
     unpaidAppointments, 
@@ -149,33 +156,44 @@ export default function POS() {
   const { collections, isLoading: loadingCollections } = useCollections();
   const { clients, isLoading: loadingClients } = useClients();
   
-  // Search state
-  const [serviceSearchQuery, setServiceSearchQuery] = useState('');
-  const [productSearchQuery, setProductSearchQuery] = useState('');
+  // State for order items and tabs
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [tabValue, setTabValue] = useState(0)
+  const [walkInDiscount, setWalkInDiscount] = useState(0)
+  const [walkInPaymentMethod, setWalkInPaymentMethod] = useState<PaymentMethod>('cash')
+  const [processing, setProcessing] = useState(false)
+  const [snackbarOpen, setSnackbarOpen] = useState(false)
+  const [snackbarMessage, setSnackbarMessage] = useState('')
+  
+  // State for split payment
+  const [isSplitPayment, setIsSplitPayment] = useState(false);
+  const [splitPayments, setSplitPayments] = useState<PaymentDetail[]>([]);
+  const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
+  const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('cash');
+  const [pendingAmount, setPendingAmount] = useState<number>(0);
+  
+  // State for services and products
+  const [serviceSearchQuery, setServiceSearchQuery] = useState('')
+  const [selectedServiceCollection, setSelectedServiceCollection] = useState('')
+  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [selectedProductCategory, setSelectedProductCategory] = useState('')
+  const [activeTab, setActiveTab] = useState(0) // 0 for services, 1 for products
   
   // State for appointment payment processing
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<PaymentMethod>('upi');
   const [appointmentDiscount, setAppointmentDiscount] = useState<number>(0);
-  const [processing, setProcessing] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
   
   // State for walk-in order creation
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [selectedStylist, setSelectedStylist] = useState<string>('');
   const [customerName, setCustomerName] = useState<string>('');
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
   const [appointmentDate, setAppointmentDate] = useState<Date | null>(new Date());
   const [appointmentTime, setAppointmentTime] = useState<Date | null>(new Date());
-  const [walkInDiscount, setWalkInDiscount] = useState<number>(0);
-  const [walkInPaymentMethod, setWalkInPaymentMethod] = useState<PaymentMethod>('cash');
-  const [activeStep, setActiveStep] = useState(0);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
   
   // Selected collection state
-  const [selectedServiceCollection, setSelectedServiceCollection] = useState<string>('');
   const [_expandedServiceCollection, _setExpandedServiceCollection] = useState<boolean>(false);
-  const [selectedProductCategory, setSelectedProductCategory] = useState<string>('');
   const [_expandedProductCategory, _setExpandedProductCategory] = useState<boolean>(false);
   
   // Filter active services for the order creation
@@ -267,68 +285,129 @@ export default function POS() {
     sum + ((item.customPrice || item.service.price) * item.quantity), 0);
     
   const orderSubtotal = serviceSubtotal + productSubtotal;
-  const { tax, total } = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
+  
+  // Calculate tax and total based on payment method
+  // When using split payment, we need to calculate tax differently
+  const { tax, total } = useMemo(() => {
+    if (isSplitPayment && splitPayments.length > 0) {
+      const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+      const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+      const hasMixedPayments = hasCash && hasNonCash;
+      
+      const totalPaymentAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      
+      let calculatedTax = 0;
+      if (hasMixedPayments || hasNonCash) {
+        calculatedTax = Math.round(orderSubtotal * 0.18);
+      }
+      
+      return {
+        tax: calculatedTax,
+        total: orderSubtotal + calculatedTax - walkInDiscount
+      };
+    } else {
+      return calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
+    }
+  }, [orderSubtotal, walkInDiscount, walkInPaymentMethod, isSplitPayment, splitPayments]);
+  
+  // Function to calculate total paid
+  const calculateTotalPaid = (payments: PaymentDetail[]) => {
+    return payments.reduce((sum, payment) => sum + payment.amount, 0);
+  };
+
+  // Function to calculate pending amount accurately
+  const calculateAccuratePendingAmount = (total: number, payments: PaymentDetail[]) => {
+    const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+    // Use strict equality check
+    return totalPaid === total ? 0 : Math.max(0, total - totalPaid);
+  };
+
+  // Update pending amount when split payments change
+  useEffect(() => {
+    if (isSplitPayment) {
+      // ABSOLUTELY FAILSAFE APPROACH: Work with paise/cents for precision
+      const totalInPaise = Math.round(total * 100);
+      const subtotalInPaise = Math.round(orderSubtotal * 100);
+      const taxInPaise = Math.round(tax * 100);
+      const paidInPaise = Math.round(splitPayments.reduce((sum, payment) => {
+        return sum + Math.round(payment.amount * 100);
+      }, 0));
+      
+      // Calculate remaining in paise
+      let remainingInPaise = totalInPaise - paidInPaise;
+      
+      // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
+      if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
+        console.log('CRITICAL - useEffect - Amount paid equals service subtotal, forcing pending to 0');
+        remainingInPaise = 0;
+      }
+      
+      // If within 1 rupee or negative, force to zero
+      if (remainingInPaise <= 100) {
+        remainingInPaise = 0;
+      }
+      
+      // Critical logic: if paid equals or exceeds total, remaining MUST be 0
+      if (paidInPaise >= totalInPaise) {
+        remainingInPaise = 0;
+      }
+      
+      // Calculate remaining in rupees
+      const remainingAmount = Math.max(0, remainingInPaise / 100);
+      
+      // Critical logging to diagnose the issue
+      console.log('CRITICAL - useEffect - Total (paise):', totalInPaise);
+      console.log('CRITICAL - useEffect - Subtotal (paise):', subtotalInPaise);
+      console.log('CRITICAL - useEffect - Tax (paise):', taxInPaise);
+      console.log('CRITICAL - useEffect - Paid (paise):', paidInPaise);
+      console.log('CRITICAL - useEffect - Remaining (paise):', remainingInPaise);
+      console.log('CRITICAL - useEffect - Setting pending amount to:', remainingAmount);
+      
+      // DIRECT UPDATE: Set to 0 if very close to zero or paid exceeds total
+      setPendingAmount(remainingAmount);
+    }
+  }, [splitPayments, total, isSplitPayment, orderSubtotal, tax]);
 
   // Handle pre-filled appointment data
   useEffect(() => {
-    if (appointmentData && unpaidAppointments) {
-      // Find the appointment in unpaid appointments
-      const appointment = unpaidAppointments.find(a => a.id === appointmentData.id);
+    if (appointmentData) {
+      // Find the appointment's client
+      const client = clients?.find((c) => c.id === appointmentData.client_id);
       
-      if (appointment) {
-        // Set the selected appointment
-        setSelectedAppointment(appointment);
-      } else {
-        // If appointment not found in unpaid list, create a walk-in order with the data
-        setTabValue(0); // Switch to walk-in tab
+      // Set the client name if found, or use the appointment client name as fallback
+      if (client) {
+        setSelectedClient(client);
+        setCustomerName(client.full_name);
+      } else if (appointmentData.client_name) {
+        setCustomerName(appointmentData.client_name);
+      }
+      
+      // Set the stylist ID
+      if (appointmentData.stylist_id) {
+        setSelectedStylist(appointmentData.stylist_id);
+      }
+      
+      // Find and add the appointment service
+      if (appointmentData.service_id && allServices) {
+        const service = allServices.find(s => s.id === appointmentData.service_id);
         
-        // Set customer name and stylist
-        setCustomerName(appointmentData.clientName);
-        
-        // Try to find client in clients list
-        if (clients) {
-          const client = clients.find(c => 
-            c.full_name.toLowerCase() === appointmentData.clientName.toLowerCase()
-          );
-          if (client) {
-            setSelectedClient(client);
-          }
-        }
-        
-        setSelectedStylist(appointmentData.stylistId);
-        
-        // Find the service in services list
-        const service = allServices?.find(s => s.id === appointmentData.serviceId);
-        
+        // Add service to order items if found
         if (service) {
-          // Add service to order items
           handleAddService(service);
         }
-        
-        // Set appointment time if available
-        if (appointmentData.appointmentTime) {
-          const appointmentDateTime = new Date(appointmentData.appointmentTime);
-          setAppointmentDate(appointmentDateTime);
-          setAppointmentTime(appointmentDateTime);
-        }
-        
-        // Move to services step
-        setActiveStep(1);
       }
+      
+      // Set appointment time if available
+      if (appointmentData.appointmentTime) {
+        const appointmentDateTime = new Date(appointmentData.appointmentTime);
+        setAppointmentDate(appointmentDateTime);
+        setAppointmentTime(appointmentDateTime);
+      }
+      
+      // Move to services step
+      setActiveStep(1);
     }
-  }, [appointmentData, unpaidAppointments, allServices, clients]);
-
-  // Handle tab change
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
-  // Handle appointment selection
-  const handleAppointmentSelect = (appointment: any) => {
-    setSelectedAppointment(appointment);
-    setCustomerName(appointment?.client_name || '');
-    setAppointmentDiscount(0); // Reset discount when selecting new appointment
-  };
+  }, [appointmentData, allServices, clients]);
 
   // Handle client selection
   const handleClientSelect = (client: any) => {
@@ -337,60 +416,6 @@ export default function POS() {
       setCustomerName(client.full_name);
     } else {
       setCustomerName('');
-    }
-  };
-
-  // Update handleAppointmentPayment function to separate services and products
-  const handleAppointmentPayment = async () => {
-    try {
-      if (!selectedAppointment || !selectedStylist) return;
-      
-      // Create array of services from order items
-      const services = orderItems.map(item => ({
-        service_id: item.service.id,
-        service_name: item.service.name,
-        price: item.customPrice || item.service.price,
-        type: item.type as 'service' | 'product'
-      }));
-      
-      // Get only the prices
-      const servicePrices = services.map(service => service.price);
-      
-      // Calculate totals
-      const { subtotal, tax, total } = calculateTotal(servicePrices, appointmentDiscount, appointmentPaymentMethod);
-      
-      // Process payment
-      await processAppointmentPayment({
-        appointment_id: selectedAppointment.id,
-        client_name: selectedAppointment.clients.full_name,
-        stylist_id: selectedAppointment.stylist_id,
-        services,
-        total,
-        subtotal,
-        tax,
-        discount: appointmentDiscount,
-        payment_method: appointmentPaymentMethod,
-        is_walk_in: false
-      });
-      
-      // Reset form
-      setSelectedAppointment(null);
-      setOrderItems([]);
-      setAppointmentDiscount(0);
-      setAppointmentPaymentMethod('credit_card');
-      
-      // Navigate back to first step
-      setActiveStep(0);
-      
-      // Show success message
-      setSnackbarMessage('Payment processed successfully');
-      setSnackbarOpen(true);
-    } catch (error) {
-      console.error('Payment error:', error);
-      setSnackbarMessage('Failed to process payment');
-      setSnackbarOpen(true);
-    } finally {
-      setProcessing(false);
     }
   };
 
@@ -468,58 +493,214 @@ export default function POS() {
     setActiveStep((prevStep) => prevStep - 1);
   };
 
+  // Update handleAddSplitPayment to use the new function
+  const handleAddSplitPayment = () => {
+    // Validation for maximum 2 payment methods
+    if (splitPayments.length >= 2) {
+      setSnackbarMessage('Maximum 2 payment methods allowed');
+      setSnackbarOpen(true);
+      return;
+    }
+
+    // Fix validation to check if amount is between 0 and the remaining amount (inclusive)
+    if (newPaymentAmount <= 0 || newPaymentAmount > pendingAmount) {
+      setSnackbarMessage('Invalid payment amount');
+      setSnackbarOpen(true);
+      return;
+    }
+    
+    const newPayment: PaymentDetail = {
+      id: (Math.random() * 1000000).toString(), // Temporary ID - will be replaced on server
+      amount: newPaymentAmount,
+      payment_method: newPaymentMethod,
+      payment_date: new Date().toISOString(),
+    };
+    
+    const updatedSplitPayments = [...splitPayments, newPayment];
+    setSplitPayments(updatedSplitPayments);
+    setNewPaymentAmount(0);
+
+    // MOST ROBUST APPROACH: Convert to paise/cents for precision
+    const totalInPaise = Math.round(total * 100);
+    const subtotalInPaise = Math.round(orderSubtotal * 100);
+    const taxInPaise = Math.round(tax * 100);
+    const paidInPaise = Math.round(updatedSplitPayments.reduce((sum, payment) => {
+      return sum + Math.round(payment.amount * 100);
+    }, 0));
+    
+    // Calculate remaining in paise
+    let remainingInPaise = totalInPaise - paidInPaise;
+    
+    // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
+    if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
+      console.log('CRITICAL - handleAddSplitPayment - Amount paid equals service subtotal, forcing pending to 0');
+      remainingInPaise = 0;
+    }
+    
+    // If within 1 rupee or negative, force to zero
+    if (remainingInPaise <= 100) {
+      remainingInPaise = 0;
+    }
+    
+    // Critical logic: if paid equals or exceeds total, remaining MUST be 0
+    if (paidInPaise >= totalInPaise) {
+      remainingInPaise = 0;
+    }
+    
+    // Calculate remaining in rupees
+    const remainingAmount = Math.max(0, remainingInPaise / 100);
+    
+    // Critical logging to diagnose the issue
+    console.log('CRITICAL - handleAddSplitPayment - Total (paise):', totalInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Subtotal (paise):', subtotalInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Tax (paise):', taxInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Paid (paise):', paidInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Remaining (paise):', remainingInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Final pending amount:', remainingAmount);
+    
+    // Set the pending amount to the calculated remaining
+    setPendingAmount(remainingAmount);
+  };
+  
+  // Remove a payment from the split payments list
+  const handleRemoveSplitPayment = (paymentId: string) => {
+    setSplitPayments(splitPayments.filter(payment => payment.id !== paymentId));
+  };
+  
+  // Calculate total amount already paid
+  const getAmountPaid = () => {
+    return splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  };
+  
+  // Reset split payment state when moving between steps
+  useEffect(() => {
+    if (activeStep !== 2) {
+      setIsSplitPayment(false);
+      setSplitPayments([]);
+      setNewPaymentAmount(0);
+    } else {
+      // When entering payment step, set pending amount to total
+      setPendingAmount(total);
+    }
+  }, [activeStep, total]);
+  
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
+    if (!isStepValid()) return;
+    
+    setProcessing(true);
+    
     try {
-      // Create array of services from order items
-      const services = orderItems.map(item => ({
+      // Prepare service items for the order
+      const serviceItemsForOrder = orderItems.map(item => ({
         service_id: item.service.id,
         service_name: item.service.name,
         price: item.customPrice || item.service.price,
-        type: item.type as 'service' | 'product'
+        type: item.type,
       }));
       
-      // Get only the prices
-      const servicePrices = services.map(service => service.price);
+      // Format appointment time if available
+      let formattedAppointmentTime: string | undefined = undefined;
+      if (appointmentDate && appointmentTime) {
+        const date = new Date(appointmentDate);
+        date.setHours(appointmentTime.getHours());
+        date.setMinutes(appointmentTime.getMinutes());
+        formattedAppointmentTime = date.toISOString();
+      }
       
-      // Calculate totals based on which services and products are being purchased
-      const { subtotal, tax, total } = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
-      
-      // Process the walk-in order
-      await createWalkInOrder({
+      // Create order data with or without split payment
+      const orderData: any = {
         client_name: customerName,
-        stylist_id: selectedStylist ? selectedStylist : '',
-        services,
-        total,
-        subtotal,
-        tax,
+        stylist_id: selectedStylist,
+        services: serviceItemsForOrder,
+        total: total,
+        subtotal: orderSubtotal,
+        tax: tax,
         discount: walkInDiscount,
         payment_method: walkInPaymentMethod,
-        is_walk_in: true
-      });
+        is_walk_in: true,
+        appointment_time: formattedAppointmentTime,
+        payments: isSplitPayment ? splitPayments : undefined,
+      };
+      
+      // ROBUST APPROACH for pending amount calculation
+      if (isSplitPayment) {
+        // COMPLETELY NEW APPROACH: Convert to paise (cents) for precision
+        const totalInPaise = Math.round(total * 100);
+        const subtotalInPaise = Math.round(orderSubtotal * 100);
+        const taxInPaise = Math.round(tax * 100);
+        const paidInPaise = Math.round(splitPayments.reduce((sum, payment) => {
+          return sum + Math.round(payment.amount * 100);
+        }, 0));
+        
+        // Calculate remaining in paise
+        let remainingInPaise = totalInPaise - paidInPaise;
+        
+        // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
+        if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
+          console.log('CRITICAL - Create Order - Amount paid equals service subtotal, forcing pending to 0');
+          remainingInPaise = 0;
+        }
+        
+        // If very close to zero or negative, force to zero
+        if (remainingInPaise <= 100) { // Within 1 rupee
+          remainingInPaise = 0;
+        }
+        
+        // If total paid is at least equal to total, force pending to 0
+        if (paidInPaise >= totalInPaise) {
+          remainingInPaise = 0;
+        }
+        
+        // Convert back to rupees
+        const pendingAmount = remainingInPaise / 100;
+        
+        // FORCE DIRECT CHECK - If total paid equals or exceeds total, pending MUST be 0
+        if (paidInPaise >= totalInPaise) {
+          orderData.pending_amount = 0;
+        } else {
+          orderData.pending_amount = pendingAmount;
+        }
+        
+        // Critical logging to diagnose the issue
+        console.log('CRITICAL - Create Order - Total in paise:', totalInPaise);
+        console.log('CRITICAL - Create Order - Subtotal in paise:', subtotalInPaise);
+        console.log('CRITICAL - Create Order - Tax in paise:', taxInPaise);
+        console.log('CRITICAL - Create Order - Paid in paise:', paidInPaise);
+        console.log('CRITICAL - Create Order - Pending in paise:', remainingInPaise);
+        console.log('CRITICAL - Create Order - Final pending amount:', orderData.pending_amount);
+      } else {
+        // No split payment, set pending to 0
+        orderData.pending_amount = 0;
+      }
+      
+      // Create order
+      const response = await createWalkInOrder(orderData);
+      
+      // Show success message and play sound
+      setSnackbarMessage('Order created successfully!');
+      setSnackbarOpen(true);
+      playCashRegisterSound();
       
       // Reset form
-      setCustomerName('');
-      setSelectedStylist('');
       setOrderItems([]);
+      setCustomerName('');
+      setSelectedClient(null);
+      setSelectedStylist('');
+      setAppointmentDate(null);
+      setAppointmentTime(null);
+      setActiveStep(0);
       setWalkInDiscount(0);
       setWalkInPaymentMethod('cash');
-      setAppointmentDate(new Date());
-      setAppointmentTime(new Date());
+      setIsSplitPayment(false);
+      setSplitPayments([]);
       
-      // Reset step
-      setActiveStep(0);
-      
-      // Show success message
-      setSnackbarMessage('Order created successfully');
-      setSnackbarOpen(true);
-      
-      // Play cash register sound
-      playCashRegisterSound();
     } catch (error) {
-      console.error('Order error:', error);
-      setSnackbarMessage('Failed to create order');
+      console.error('Error creating order:', error);
+      setSnackbarMessage('Error creating order. Please try again.');
       setSnackbarOpen(true);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -866,6 +1047,16 @@ export default function POS() {
     );
   };
 
+  const handlePaymentMethodChange = (event: SelectChangeEvent<PaymentMethod>) => {
+    const selectedMethod = event.target.value as PaymentMethod;
+    setNewPaymentMethod(selectedMethod);
+    
+    // If this is the second payment method, set the amount to the pending amount
+    if (splitPayments.length === 1) {
+      setNewPaymentAmount(pendingAmount);
+    }
+  };
+
   if (isLoading || loadingStylists || loadingServices || loadingClients || loadingServiceCollections || loadingCollectionServices || loadingCollections) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -875,666 +1066,687 @@ export default function POS() {
   }
 
   return (
-    <Box>
-      <Typography variant="h1" gutterBottom>Point of Sale</Typography>
-      
-      <Paper sx={{ mb: 3 }}>
-        <Tabs
-          value={tabValue}
-          onChange={handleTabChange}
-          indicatorColor="primary"
-          textColor="primary"
-          centered
-        >
-          <Tab 
-            icon={<CartIcon />} 
-            label="Walk-in Sale" 
-            iconPosition="start"
-          />
-          <Tab 
-            icon={<PaymentIcon />} 
-            label="Appointment Payment" 
-            iconPosition="start"
-          />
-        </Tabs>
-      </Paper>
-      
-      {/* Walk-in Sales Tab */}
-      <TabPanel value={tabValue} index={0}>
-        <Grid container spacing={3} sx={{ height: '100%' }}>
-          {/* Left side - Cart and Process */}
-          <Grid item xs={12} md={8} sx={{ height: '100%' }}>
-            <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
-                <Step>
-                  <StepLabel>Customer & Stylist</StepLabel>
-                </Step>
-                <Step>
-                  <StepLabel>Services</StepLabel>
-                </Step>
-                <Step>
-                  <StepLabel>Payment</StepLabel>
-                </Step>
-              </Stepper>
-              
-              <Box sx={{ flex: 1, overflow: 'auto' }}>
-                {/* Step 1: Customer & Stylist */}
-                {activeStep === 0 && (
-                  <Box sx={{ p: 2 }}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12}>
-                        <Autocomplete
-                          id="client-select"
-                          options={clients || []}
-                          getOptionLabel={(option) => option.full_name}
-                          value={selectedClient}
-                          onChange={(event, newValue) => handleClientSelect(newValue)}
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              label="Select Client"
-                              required
-                              error={customerName.trim() === ''}
-                              helperText={customerName.trim() === '' ? 'Client name is required' : ''}
-                              InputProps={{
-                                ...params.InputProps,
-                                startAdornment: (
-                                  <>
-                                    <InputAdornment position="start">
-                                      <PersonIcon />
-                                    </InputAdornment>
-                                    {params.InputProps.startAdornment}
-                                  </>
-                                ),
-                              }}
-                            />
-                          )}
-                          renderOption={(props, option) => {
-                            // Extract the key from props to pass it directly
-                            const { key, ...otherProps } = props;
-                            return (
-                              <li key={key} {...otherProps}>
-                                <Box>
-                                  <Typography variant="body1">{option.full_name}</Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {option.phone && `Phone: ${option.phone}`} 
-                                    {option.total_spent > 0 && ` • Total Spent: ${formatCurrency(option.total_spent)}`}
-                                    {option.pending_payment > 0 && ` • Pending: ${formatCurrency(option.pending_payment)}`}
-                                  </Typography>
-                                </Box>
-                              </li>
-                            );
-                          }}
-                          freeSolo
-                          onInputChange={(event, newInputValue) => {
-                            setCustomerName(newInputValue);
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <FormControl fullWidth required error={selectedStylist === ''}>
-                          <InputLabel>Select Stylist</InputLabel>
-                          <Select
-                            value={selectedStylist}
-                            onChange={(e) => setSelectedStylist(e.target.value as string)}
-                            label="Select Stylist"
-                          >
-                            {stylists?.map((stylist) => (
-                              <MenuItem key={stylist.id} value={stylist.id}>
-                                {stylist.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          {selectedStylist === '' && (
-                            <Typography variant="caption" color="error">
-                              Stylist selection is required
-                            </Typography>
-                          )}
-                        </FormControl>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                          Schedule Appointment (Optional)
-                        </Typography>
-                        <LocalizationProvider dateAdapter={AdapterDateFns}>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <DatePicker
-                                label="Appointment Date"
-                                value={appointmentDate}
-                                onChange={(newDate) => setAppointmentDate(newDate)}
-                                slotProps={{ textField: { fullWidth: true } }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TimePicker
-                                label="Appointment Time"
-                                value={appointmentTime}
-                                onChange={(newTime) => setAppointmentTime(newTime)}
-                                slotProps={{ textField: { fullWidth: true } }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </LocalizationProvider>
-                      </Grid>
-                    </Grid>
-                  </Box>
-                )}
-                
-                {/* Step 2: Services */}
-                {activeStep === 1 && (
-                  <>
-                    {renderServiceSelectionSection()}
-                    {renderProductsSelectionSection()}
-                  </>
-                )}
-                
-                {/* Step 3: Payment */}
-                {activeStep === 2 && (
-                  <Box sx={{ p: 2 }}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom>
-                          Payment Method
-                        </Typography>
-                        
-                        <FormControl fullWidth sx={{ mb: 3 }}>
-                          <InputLabel>Payment Method</InputLabel>
-                          <Select
-                            value={walkInPaymentMethod}
-                            onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
-                            label="Payment Method"
-                          >
-                            {PAYMENT_METHODS.map((method) => (
-                              <MenuItem key={method} value={method}>
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                  <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                                  {PAYMENT_METHOD_LABELS[method]}
-                                </Box>
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        
-                        {walkInPaymentMethod === 'bnpl' && (
-                          <Alert severity="info" sx={{ mb: 3 }}>
-                            Buy Now Pay Later: The customer will need to pay the full amount later.
-                          </Alert>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Point of Sale
+      </Typography>
+
+      {/* Remove tab structure and directly show Walk-in Sale content */}
+      <Grid container spacing={2} sx={{ flex: 1, height: 'calc(100% - 48px)' }}>
+        {/* Left side - Order Creation */}
+        <Grid item xs={12} md={8} sx={{ height: '100%' }}>
+          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
+              <Step>
+                <StepLabel>Customer & Stylist</StepLabel>
+              </Step>
+              <Step>
+                <StepLabel>Services</StepLabel>
+              </Step>
+              <Step>
+                <StepLabel>Payment</StepLabel>
+              </Step>
+            </Stepper>
+            
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              {/* Step 1: Customer & Stylist */}
+              {activeStep === 0 && (
+                <Box sx={{ p: 2 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                      <Autocomplete
+                        id="client-select"
+                        options={clients || []}
+                        getOptionLabel={(option) => option.full_name}
+                        value={selectedClient}
+                        onChange={(event, newValue) => handleClientSelect(newValue)}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Select Client"
+                            required
+                            error={customerName.trim() === ''}
+                            helperText={customerName.trim() === '' ? 'Client name is required' : ''}
+                            InputProps={{
+                              ...params.InputProps,
+                              startAdornment: (
+                                <>
+                                  <InputAdornment position="start">
+                                    <PersonIcon />
+                                  </InputAdornment>
+                                  {params.InputProps.startAdornment}
+                                </>
+                              ),
+                            }}
+                          />
                         )}
-                        
-                        <TextField
-                          label="Discount Amount"
-                          type="number"
-                          value={walkInDiscount}
-                          onChange={(e) => setWalkInDiscount(Number(e.target.value))}
-                          fullWidth
-                          InputProps={{
-                            inputProps: { min: 0, max: orderSubtotal },
-                            startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom>
-                          Order Summary
-                        </Typography>
-                        
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                          <Box>
-                            {serviceItems.length > 0 && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography>Service Subtotal:</Typography>
-                                <Typography>{formatCurrency(serviceSubtotal)}</Typography>
+                        renderOption={(props, option) => {
+                          // Extract the key from props to pass it directly
+                          const { key, ...otherProps } = props;
+                          return (
+                            <li key={key} {...otherProps}>
+                              <Box>
+                                <Typography variant="body1">{option.full_name}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {option.phone && `Phone: ${option.phone}`} 
+                                  {option.total_spent > 0 && ` • Total Spent: ${formatCurrency(option.total_spent)}`}
+                                  {option.pending_payment > 0 && ` • Pending: ${formatCurrency(option.pending_payment)}`}
+                                </Typography>
                               </Box>
-                            )}
-                            
-                            {productItems.length > 0 && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography>Product Subtotal:</Typography>
-                                <Typography>{formatCurrency(productSubtotal)}</Typography>
-                              </Box>
-                            )}
-                            
-                            {(serviceItems.length > 0 && productItems.length > 0) && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-                                <Typography fontWeight="medium">Combined Subtotal:</Typography>
-                                <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
-                              </Box>
-                            )}
-                            
-                            {walkInPaymentMethod !== 'cash' && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography>GST (18%):</Typography>
-                                <Typography>{formatCurrency(tax)}</Typography>
-                              </Box>
-                            )}
-                            
-                            {walkInPaymentMethod === 'cash' && (
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography color="success.main">No GST (Cash Payment)</Typography>
-                                <Typography color="success.main">₹0</Typography>
-                              </Box>
-                            )}
-                            
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography>Discount:</Typography>
-                              <Typography color="error">
-                                -{formatCurrency(walkInDiscount)}
-                              </Typography>
-                            </Box>
-                            
-                            <Divider sx={{ my: 1 }} />
-                            
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="h6">Total:</Typography>
-                              <Typography variant="h6" color="primary">{formatCurrency(total)}</Typography>
-                            </Box>
-                          </Box>
-                        </Paper>
-                      </Grid>
+                            </li>
+                          );
+                        }}
+                        freeSolo
+                        onInputChange={(event, newInputValue) => {
+                          setCustomerName(newInputValue);
+                        }}
+                      />
                     </Grid>
-                  </Box>
-                )}
-              </Box>
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 2 }}>
-                <Button
-                  variant="outlined"
-                  onClick={handleBack}
-                  disabled={activeStep === 0}
-                >
-                  Back
-                </Button>
-                
-                {activeStep === 2 ? (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleCreateWalkInOrder}
-                    disabled={processing || !isStepValid()}
-                    startIcon={processing ? <CircularProgress size={20} /> : <CheckIcon />}
-                  >
-                    {processing ? 'Processing...' : 'Complete Order'}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleNext}
-                    disabled={!isStepValid()}
-                  >
-                    Next
-                  </Button>
-                )}
-              </Box>
-            </Paper>
-          </Grid>
-          
-          {/* Right side - Order Summary */}
-          <Grid item xs={12} md={4} sx={{ height: '100%' }}>
-            <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="h6" gutterBottom>
-                Order Summary
-              </Typography>
-              
-              {orderItems.length > 0 ? (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <List sx={{ flex: 1, overflow: 'auto' }}>
-                    {/* Show services */}
-                    {serviceItems.length > 0 && (
-                      <ListItem dense>
-                        <ListItemText
-                          primary={<Typography variant="subtitle2" color="primary">Services</Typography>}
-                        />
-                      </ListItem>
-                    )}
                     
-                    {serviceItems.map((item) => (
-                      <ListItem key={item.service.id}>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <ContentCutIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
-                              <Typography>{item.service.name} (×{item.quantity})</Typography>
-                            </Box>
-                          }
-                          secondary={item.service.duration ? `${item.service.duration} min` : null}
-                        />
-                        <ListItemSecondaryAction>
-                          <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
+                    <Grid item xs={12}>
+                      <FormControl fullWidth required error={selectedStylist === ''}>
+                        <InputLabel>Select Stylist</InputLabel>
+                        <Select
+                          value={selectedStylist}
+                          onChange={(e) => setSelectedStylist(e.target.value as string)}
+                          label="Select Stylist"
+                        >
+                          {stylists?.map((stylist) => (
+                            <MenuItem key={stylist.id} value={stylist.id}>
+                              {stylist.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {selectedStylist === '' && (
+                          <Typography variant="caption" color="error">
+                            Stylist selection is required
+                          </Typography>
+                        )}
+                      </FormControl>
+                    </Grid>
                     
-                    {/* Show products */}
-                    {productItems.length > 0 && (
-                      <ListItem dense sx={{ mt: serviceItems.length > 0 ? 2 : 0 }}>
-                        <ListItemText
-                          primary={<Typography variant="subtitle2" color="secondary">Products</Typography>}
-                        />
-                      </ListItem>
-                    )}
-                    
-                    {productItems.map((item) => (
-                      <ListItem key={item.service.id}>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <ShoppingBasketIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
-                              <Typography>{item.service.name} (×{item.quantity})</Typography>
-                            </Box>
-                          }
-                        />
-                        <ListItemSecondaryAction>
-                          <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
-                  </List>
-                  
-                  <Divider sx={{ my: 2 }} />
-                  
-                  {/* Order Totals */}
-                  <Box>
-                    {serviceItems.length > 0 && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>Service Subtotal:</Typography>
-                        <Typography>{formatCurrency(serviceSubtotal)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {productItems.length > 0 && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>Product Subtotal:</Typography>
-                        <Typography>{formatCurrency(productSubtotal)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {(serviceItems.length > 0 && productItems.length > 0) && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-                        <Typography fontWeight="medium">Combined Subtotal:</Typography>
-                        <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {walkInPaymentMethod !== 'cash' && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>GST (18%):</Typography>
-                        <Typography>{formatCurrency(tax)}</Typography>
-                      </Box>
-                    )}
-                    
-                    {walkInPaymentMethod === 'cash' && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography color="success.main">No GST (Cash Payment)</Typography>
-                        <Typography color="success.main">₹0</Typography>
-                      </Box>
-                    )}
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography>Discount:</Typography>
-                      <Typography color="error">
-                        -{formatCurrency(walkInDiscount)}
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                        Schedule Appointment (Optional)
                       </Typography>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                      <Typography variant="h6">Total:</Typography>
-                      <Typography variant="h6" color="primary">
-                        {formatCurrency(total)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  
-                  {/* Customer & Stylist Info */}
-                  {customerName && selectedStylist && (
-                    <Box sx={{ mt: 2 }}>
-                      <Chip 
-                        icon={<PersonIcon />} 
-                        label={`Customer: ${customerName}`} 
-                        sx={{ mb: 1, mr: 1 }} 
-                      />
-                      <Chip 
-                        icon={<ContentCutIcon />} 
-                        label={`Stylist: ${stylists?.find(s => s.id === selectedStylist)?.name}`} 
-                        sx={{ mb: 1 }} 
-                      />
-                      
-                      {appointmentDate && appointmentTime && (
-                        <Chip 
-                          icon={<AccessTimeIcon />} 
-                          label={`${appointmentDate.toLocaleDateString()} at ${appointmentTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`} 
-                          sx={{ mb: 1 }} 
-                        />
-                      )}
-                    </Box>
-                  )}
-                </Box>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-                  <CartIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-                  <Typography variant="h6" color="text.secondary">
-                    Your cart is empty
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Add services to create an order
-                  </Typography>
+                      <LocalizationProvider dateAdapter={AdapterDateFns}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <DatePicker
+                              label="Appointment Date"
+                              value={appointmentDate}
+                              onChange={(newDate) => setAppointmentDate(newDate)}
+                              slotProps={{ textField: { fullWidth: true } }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TimePicker
+                              label="Appointment Time"
+                              value={appointmentTime}
+                              onChange={(newTime) => setAppointmentTime(newTime)}
+                              slotProps={{ textField: { fullWidth: true } }}
+                            />
+                          </Grid>
+                        </Grid>
+                      </LocalizationProvider>
+                    </Grid>
+                  </Grid>
                 </Box>
               )}
-            </Paper>
-          </Grid>
-        </Grid>
-      </TabPanel>
-      
-      {/* Appointment Payment Tab */}
-      <TabPanel value={tabValue} index={1}>
-        <Grid container spacing={3} sx={{ height: '100%' }}>
-          {/* Left side - Appointment List */}
-          <Grid item xs={12} md={8}>
-            <Paper sx={{ p: 2, height: '100%', overflow: 'auto' }}>
-              <Typography variant="h6" gutterBottom>Unpaid Appointments</Typography>
-              {unpaidAppointments?.length ? (
-                <List>
-                  {unpaidAppointments.map((appointment) => (
-                    <ListItem
-                      key={appointment.id}
-                      button
-                      selected={selectedAppointment?.id === appointment.id}
-                      onClick={() => handleAppointmentSelect(appointment)}
-                      sx={{ 
-                        mb: 1,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          boxShadow: 1,
-                          borderColor: 'primary.main',
-                        },
-                        '&.Mui-selected': {
-                          backgroundColor: 'primary.light',
-                          '&:hover': {
-                            backgroundColor: 'primary.light',
-                          }
+              
+              {/* Step 2: Services */}
+              {activeStep === 1 && (
+                <>
+                  {renderServiceSelectionSection()}
+                  {renderProductsSelectionSection()}
+                </>
+              )}
+              
+              {/* Step 3: Payment */}
+              {activeStep === 2 && (
+                <Box sx={{ p: 2 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="h6" gutterBottom>
+                        Payment Method
+                      </Typography>
+                      
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={isSplitPayment}
+                            onChange={(e) => setIsSplitPayment(e.target.checked)}
+                            color="primary"
+                          />
                         }
-                      }}
-                    >
+                        label="Split Payment"
+                        sx={{ mb: 2 }}
+                      />
+                      
+                      {isSplitPayment ? (
+                        // Split payment UI
+                        <Box>
+                          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                            <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                              Split Payment Details
+                            </Typography>
+                            
+                            {/* Show GST information at the top */}
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                              <Typography variant="body2">
+                                GST (18%) is applied to non-cash payment methods. When mixing cash with other payment methods, 
+                                GST will be applied to the complete amount. Maximum 2 payment methods allowed. No two payments of the same type allowed.
+                              </Typography>
+                            </Alert>
+                            
+                            <TableContainer sx={{ maxHeight: 200, mb: 2 }}>
+                              <Table size="small" stickyHeader>
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>Amount</TableCell>
+                                    <TableCell>Method</TableCell>
+                                    <TableCell>GST Applicable</TableCell>
+                                    <TableCell align="right">Actions</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {splitPayments.map((payment) => (
+                                    <TableRow key={payment.id}>
+                                      <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                                      <TableCell>{PAYMENT_METHOD_LABELS[payment.payment_method]}</TableCell>
+                                      <TableCell>
+                                        {payment.payment_method === 'cash' && 
+                                         !splitPayments.some(p => p.payment_method !== 'cash') ? (
+                                          <Typography color="success.main">No</Typography>
+                                        ) : (
+                                          <Typography>Yes</Typography>
+                                        )}
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        <IconButton 
+                                          size="small" 
+                                          onClick={() => handleRemoveSplitPayment(payment.id)}
+                                          aria-label="delete payment"
+                                        >
+                                          <DeleteOutlineIcon fontSize="small" />
+                                        </IconButton>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                  {splitPayments.length === 0 && (
+                                    <TableRow>
+                                      <TableCell colSpan={4} align="center">
+                                        <Typography variant="body2" color="text.secondary">
+                                          No payments added yet
+                                        </Typography>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                            
+                            {/* Only show the payment input fields if less than 2 payment methods are added */}
+                            {splitPayments.length < 2 ? (
+                              <Box sx={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                                <TextField
+                                  label="Amount"
+                                  type="number"
+                                  value={newPaymentAmount}
+                                  onChange={(e) => setNewPaymentAmount(Number(e.target.value))}
+                                  sx={{ minWidth: 120 }}
+                                  InputProps={{
+                                    inputProps: { min: 1, max: pendingAmount },
+                                    startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                                  }}
+                                  helperText={`Max: ${formatCurrency(pendingAmount)}`}
+                                />
+                                
+                                <FormControl sx={{ minWidth: 150 }}>
+                                  <InputLabel>Payment Method</InputLabel>
+                                  <Select
+                                    value={newPaymentMethod}
+                                    onChange={handlePaymentMethodChange}
+                                    label="Payment Method"
+                                  >
+                                    {PAYMENT_METHODS.map((method) => {
+                                      // If one payment method is already used and we're selecting for the second method,
+                                      // don't allow selecting the same method again
+                                      const isMethodAlreadyUsed = 
+                                        splitPayments.length === 1 && 
+                                        splitPayments[0].payment_method === method;
+                                        
+                                      return !isMethodAlreadyUsed ? (
+                                        <MenuItem key={method} value={method}>
+                                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                            <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                                            {PAYMENT_METHOD_LABELS[method]}
+                                            {method === 'cash' && (
+                                              <Chip 
+                                                size="small" 
+                                                label="No GST" 
+                                                color="success" 
+                                                sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                                              />
+                                            )}
+                                          </Box>
+                                        </MenuItem>
+                                      ) : null;
+                                    })}
+                                  </Select>
+                                </FormControl>
+                                
+                                <Button
+                                  variant="contained"
+                                  color="primary"
+                                  startIcon={<AddIcon />}
+                                  onClick={handleAddSplitPayment}
+                                  disabled={newPaymentAmount <= 0 || newPaymentAmount > pendingAmount}
+                                >
+                                  Add Payment
+                                </Button>
+                              </Box>
+                            ) : (
+                              <Alert severity="warning" sx={{ mb: 2 }}>
+                                <Typography variant="body2">
+                                  Maximum of 2 payment methods reached. Remove one to add another.
+                                </Typography>
+                              </Alert>
+                            )}
+                            
+                            {/* Payment summary */}
+                            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+                              <Typography>
+                                Amount Paid: <strong>{formatCurrency(getAmountPaid())}</strong>
+                              </Typography>
+                              <Typography>
+                                Pending: <strong>{formatCurrency(pendingAmount)}</strong>
+                              </Typography>
+                            </Box>
+                          </Paper>
+                          
+                          {/* Display GST breakdown for split payments */}
+                          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                            <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                              GST Breakdown
+                            </Typography>
+                            
+                            <Box sx={{ mb: 2 }}>
+                              {/* Check if we have mixed payment methods (cash + non-cash) */}
+                              {(() => {
+                                const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+                                const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+                                const hasMixedPayments = hasCash && hasNonCash;
+                                
+                                // If mixed payments, show GST for all payments
+                                if (hasMixedPayments) {
+                                  return splitPayments.map((payment, index) => (
+                                    <Box 
+                                      key={index} 
+                                      sx={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        mb: 1 
+                                      }}
+                                    >
+                                      <Typography>
+                                        GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
+                                      </Typography>
+                                      <Typography>
+                                        {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
+                                      </Typography>
+                                    </Box>
+                                  ));
+                                } else {
+                                  // Otherwise only show GST for non-cash payments
+                                  return splitPayments
+                                    .filter(payment => payment.payment_method !== 'cash')
+                                    .map((payment, index) => (
+                                      <Box 
+                                        key={index} 
+                                        sx={{ 
+                                          display: 'flex', 
+                                          justifyContent: 'space-between', 
+                                          mb: 1 
+                                        }}
+                                      >
+                                        <Typography>
+                                          GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
+                                        </Typography>
+                                        <Typography>
+                                          {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
+                                        </Typography>
+                                      </Box>
+                                    ));
+                                }
+                              })()}
+                              
+                              {/* Show total GST */}
+                              <Box sx={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                borderTop: '1px dashed rgba(0, 0, 0, 0.12)',
+                                pt: 1,
+                                mt: 1
+                              }}>
+                                <Typography fontWeight="medium">Total GST:</Typography>
+                                <Typography fontWeight="medium">
+                                  {formatCurrency(tax)}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            
+                            {/* Only show the cash exemption alert if there's no mixed payment */}
+                            {splitPayments.some(payment => payment.payment_method === 'cash') && 
+                            !splitPayments.some(payment => payment.payment_method !== 'cash') && (
+                              <Alert severity="success" sx={{ mb: 1 }}>
+                                <Typography variant="body2">
+                                  No GST applied to cash payments: {formatCurrency(
+                                    splitPayments
+                                      .filter(payment => payment.payment_method === 'cash')
+                                      .reduce((sum, payment) => sum + payment.amount, 0)
+                                  )}
+                                </Typography>
+                              </Alert>
+                            )}
+                          </Paper>
+                          
+                          {pendingAmount > 0 && (
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                              The remaining amount of {formatCurrency(pendingAmount)} will be marked as pending and can be collected later.
+                            </Alert>
+                          )}
+                        </Box>
+                      ) : (
+                        // Standard payment UI
+                        <>
+                          <FormControl fullWidth sx={{ mb: 3 }}>
+                            <InputLabel>Payment Method</InputLabel>
+                            <Select
+                              value={walkInPaymentMethod}
+                              onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
+                              label="Payment Method"
+                            >
+                              {PAYMENT_METHODS.map((method) => (
+                                <MenuItem key={method} value={method}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                    <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                                    {PAYMENT_METHOD_LABELS[method]}
+                                  </Box>
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          
+                          {walkInPaymentMethod === 'bnpl' && (
+                            <Alert severity="info" sx={{ mb: 3 }}>
+                              Buy Now Pay Later: The customer will need to pay the full amount later.
+                            </Alert>
+                          )}
+                          
+                          {walkInPaymentMethod !== 'cash' && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>GST (18%):</Typography>
+                              <Typography>{formatCurrency(tax)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {walkInPaymentMethod === 'cash' && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography color="success.main">No GST (Cash Payment)</Typography>
+                              <Typography color="success.main">₹0</Typography>
+                            </Box>
+                          )}
+                        </>
+                      )}
+                      
+                      <TextField
+                        label="Discount Amount"
+                        type="number"
+                        value={walkInDiscount}
+                        onChange={(e) => setWalkInDiscount(Number(e.target.value))}
+                        fullWidth
+                        InputProps={{
+                          inputProps: { min: 0, max: orderSubtotal },
+                          startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="h6" gutterBottom>
+                        Order Summary
+                      </Typography>
+                      
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Box>
+                          {serviceItems.length > 0 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>Service Subtotal:</Typography>
+                              <Typography>{formatCurrency(serviceSubtotal)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {productItems.length > 0 && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                              <Typography>Product Subtotal:</Typography>
+                              <Typography>{formatCurrency(productSubtotal)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {(serviceItems.length > 0 && productItems.length > 0) && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
+                              <Typography fontWeight="medium">Combined Subtotal:</Typography>
+                              <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
+                            </Box>
+                          )}
+                          
+                          {/* Display GST for all payment methods */}
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography>GST (18%):</Typography>
+                            <Typography>{formatCurrency(tax)}</Typography>
+                          </Box>
+                          
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography>Discount:</Typography>
+                            <Typography color="error">
+                              -{formatCurrency(walkInDiscount)}
+                            </Typography>
+                          </Box>
+                          
+                          <Divider sx={{ my: 1 }} />
+                          
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="h6">Total:</Typography>
+                            <Typography variant="h6" color="primary">{formatCurrency(total)}</Typography>
+                          </Box>
+                        </Box>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </Box>
+              )}
+            </Box>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={handleBack}
+                disabled={activeStep === 0}
+              >
+                Back
+              </Button>
+              
+              {activeStep === 2 ? (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleCreateWalkInOrder}
+                  disabled={processing || !isStepValid()}
+                  startIcon={processing ? <CircularProgress size={20} /> : <CheckIcon />}
+                >
+                  {processing ? 'Processing...' : 'Complete Order'}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleNext}
+                  disabled={!isStepValid()}
+                >
+                  Next
+                </Button>
+              )}
+            </Box>
+          </Paper>
+        </Grid>
+        
+        {/* Right side - Order Summary */}
+        <Grid item xs={12} md={4} sx={{ height: '100%' }}>
+          <Paper sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Typography variant="h6" gutterBottom>
+              Order Summary
+            </Typography>
+            
+            {orderItems.length > 0 ? (
+              <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <List sx={{ flex: 1, overflow: 'auto' }}>
+                  {/* Show services */}
+                  {serviceItems.length > 0 && (
+                    <ListItem dense>
+                      <ListItemText
+                        primary={<Typography variant="subtitle2" color="primary">Services</Typography>}
+                      />
+                    </ListItem>
+                  )}
+                  
+                  {serviceItems.map((item) => (
+                    <ListItem key={item.service.id}>
                       <ListItemText
                         primary={
-                          <Typography variant="subtitle1">
-                            {appointment.clients.full_name}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <ContentCutIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
+                            <Typography>{item.service.name} (×{item.quantity})</Typography>
+                          </Box>
                         }
-                        secondary={
-                          <>
-                            <Typography variant="body2" component="span">
-                              {appointment.services.name} - {formatCurrency(appointment.services.price)}
-                            </Typography>
-                            <br />
-                            <Typography variant="caption" color="text.secondary">
-                              {new Date(appointment.start_time).toLocaleString([], {
-                                dateStyle: 'medium',
-                                timeStyle: 'short'
-                              })}
-                            </Typography>
-                          </>
+                        secondary={item.service.duration ? `${item.service.duration} min` : null}
+                      />
+                      <ListItemSecondaryAction>
+                        <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  ))}
+                  
+                  {/* Show products */}
+                  {productItems.length > 0 && (
+                    <ListItem dense sx={{ mt: serviceItems.length > 0 ? 2 : 0 }}>
+                      <ListItemText
+                        primary={<Typography variant="subtitle2" color="secondary">Products</Typography>}
+                      />
+                    </ListItem>
+                  )}
+                  
+                  {productItems.map((item) => (
+                    <ListItem key={item.service.id}>
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <ShoppingBasketIcon fontSize="small" sx={{ mr: 1, opacity: 0.7 }} />
+                            <Typography>{item.service.name} (×{item.quantity})</Typography>
+                          </Box>
                         }
                       />
                       <ListItemSecondaryAction>
-                        <Typography variant="h6" color="primary">
-                          {formatCurrency(appointment.services.price)}
-                        </Typography>
+                        <Typography>{formatCurrency((item.customPrice || item.service.price) * item.quantity)}</Typography>
                       </ListItemSecondaryAction>
                     </ListItem>
                   ))}
                 </List>
-              ) : (
-                <Alert severity="info">
-                  No unpaid appointments found. All appointments have been processed.
-                </Alert>
-              )}
-            </Paper>
-          </Grid>
-
-          {/* Right side - Payment Processing */}
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="h6" gutterBottom>Payment Details</Typography>
-              
-              {selectedAppointment ? (
-                <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Client: {selectedAppointment.clients.full_name}
-                    </Typography>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Service: {selectedAppointment.services.name}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Appointment: {new Date(selectedAppointment.start_time).toLocaleString([], {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      })}
-                    </Typography>
-                  </Box>
-
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Payment Method</InputLabel>
-                    <Select
-                      value={appointmentPaymentMethod}
-                      label="Payment Method"
-                      onChange={(e) => setAppointmentPaymentMethod(e.target.value as PaymentMethod)}
-                    >
-                      {PAYMENT_METHODS.map((method) => (
-                        <MenuItem key={method} value={method}>
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                            {PAYMENT_METHOD_LABELS[method]}
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <TextField
-                    label="Discount"
-                    type="number"
-                    value={appointmentDiscount}
-                    onChange={(e) => setAppointmentDiscount(Number(e.target.value))}
-                    fullWidth
-                    sx={{ mb: 3 }}
-                    InputProps={{
-                      inputProps: { min: 0, max: selectedAppointment.services.price },
-                      startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                    }}
-                  />
-
-                  <Box sx={{ mt: 'auto' }}>
-                    <Divider sx={{ mb: 2 }} />
-                    
-                    {/* Payment Summary */}
-                    <Box sx={{ mb: 2 }}>
-                      {serviceItems.length > 0 && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography>Service Subtotal:</Typography>
-                          <Typography>{formatCurrency(serviceSubtotal)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {productItems.length > 0 && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography>Product Subtotal:</Typography>
-                          <Typography>{formatCurrency(productSubtotal)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {(serviceItems.length > 0 && productItems.length > 0) && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-                          <Typography fontWeight="medium">Combined Subtotal:</Typography>
-                          <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {walkInPaymentMethod !== 'cash' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography>GST (18%):</Typography>
-                          <Typography>{formatCurrency(tax)}</Typography>
-                        </Box>
-                      )}
-                      
-                      {walkInPaymentMethod === 'cash' && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography color="success.main">No GST (Cash Payment)</Typography>
-                          <Typography color="success.main">₹0</Typography>
-                        </Box>
-                      )}
-                      
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography>Discount:</Typography>
-                        <Typography color="error">
-                          -{formatCurrency(appointmentDiscount)}
-                        </Typography>
-                      </Box>
-                      
-                      <Divider sx={{ my: 1 }} />
-                      
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="h6">Total:</Typography>
-                        <Typography variant="h6" color="primary">
-                          {formatCurrency(
-                            calculateTotal([selectedAppointment.services.price], appointmentDiscount, appointmentPaymentMethod).total
-                          )}
-                        </Typography>
-                      </Box>
+                
+                <Divider sx={{ my: 2 }} />
+                
+                {/* Order Totals */}
+                <Box>
+                  {serviceItems.length > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography>Service Subtotal:</Typography>
+                      <Typography>{formatCurrency(serviceSubtotal)}</Typography>
                     </Box>
-
-                    <Button
-                      variant="contained"
-                      fullWidth
-                      size="large"
-                      onClick={handleAppointmentPayment}
-                      disabled={processing}
-                      startIcon={processing ? <CircularProgress size={20} /> : <PaymentIcon />}
-                    >
-                      {processing ? 'Processing...' : 'Process Payment'}
-                    </Button>
+                  )}
+                  
+                  {productItems.length > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography>Product Subtotal:</Typography>
+                      <Typography>{formatCurrency(productSubtotal)}</Typography>
+                    </Box>
+                  )}
+                  
+                  {(serviceItems.length > 0 && productItems.length > 0) && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
+                      <Typography fontWeight="medium">Combined Subtotal:</Typography>
+                      <Typography fontWeight="medium">{formatCurrency(orderSubtotal)}</Typography>
+                    </Box>
+                  )}
+                  
+                  {/* Display GST for all payment methods */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography>GST (18%):</Typography>
+                    <Typography>{formatCurrency(tax)}</Typography>
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography>Discount:</Typography>
+                    <Typography color="error">
+                      -{formatCurrency(walkInDiscount)}
+                    </Typography>
+                  </Box>
+                  
+                  <Divider sx={{ my: 1 }} />
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="h6">Total:</Typography>
+                    <Typography variant="h6" color="primary">{formatCurrency(total)}</Typography>
                   </Box>
                 </Box>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-                  <PaymentIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-                  <Typography color="text.secondary">
-                    Select an appointment to process payment
-                  </Typography>
-                </Box>
-              )}
-            </Paper>
-          </Grid>
+                
+                {/* Customer & Stylist Info */}
+                {customerName && selectedStylist && (
+                  <Box sx={{ mt: 2 }}>
+                    <Chip 
+                      icon={<PersonIcon />} 
+                      label={`Customer: ${customerName}`} 
+                      sx={{ mb: 1, mr: 1 }} 
+                    />
+                    <Chip 
+                      icon={<ContentCutIcon />} 
+                      label={`Stylist: ${stylists?.find(s => s.id === selectedStylist)?.name}`} 
+                      sx={{ mb: 1 }} 
+                    />
+                    
+                    {appointmentDate && appointmentTime && (
+                      <Chip 
+                        icon={<AccessTimeIcon />} 
+                        label={`${appointmentDate.toLocaleDateString()} at ${appointmentTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`} 
+                        sx={{ mb: 1 }} 
+                      />
+                    )}
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+                <CartIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary">
+                  Your cart is empty
+                </Typography>
+                <Typography variant="body2" color="text.secondary" align="center">
+                  Add services to create an order
+                </Typography>
+              </Box>
+            )}
+          </Paper>
         </Grid>
-      </TabPanel>
+      </Grid>
       
       {/* Snackbar for notifications */}
       <Snackbar

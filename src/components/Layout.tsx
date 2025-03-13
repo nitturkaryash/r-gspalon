@@ -15,6 +15,8 @@ import {
   ListItemText,
   useTheme,
   useMediaQuery,
+  Avatar,
+  Button,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -28,11 +30,15 @@ import {
   ChevronLeft,
   Storefront,
   Category,
+  CardMembership,
+  Inventory,
+  Logout,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
 import { styled } from '@mui/material/styles'
 import { alpha } from '@mui/material/styles'
+import { useAuth } from '../hooks/useAuth'
 
 const drawerWidth = 240
 
@@ -54,7 +60,8 @@ const menuLinks: MenuLink[] = [
   { text: 'Stylists', path: '/stylists', icon: <Person /> },
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
-  { text: 'Inventory', path: '/inventory', icon: <Storefront /> },
+  { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
+  { text: 'Members', path: '/members', icon: <CardMembership /> },
 ]
 
 const ListItemStyled = styled(ListItem)(({ theme }) => ({
@@ -83,10 +90,49 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { user, logout } = useAuth()
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
   }
+
+  const handleLogout = () => {
+    logout()
+  }
+
+  const userSection = (
+    <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+          {user?.username.charAt(0).toUpperCase()}
+        </Avatar>
+        <Box>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+            {user?.username}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Administrator
+          </Typography>
+        </Box>
+      </Box>
+      <Button
+        fullWidth
+        variant="outlined"
+        color="primary"
+        startIcon={<Logout />}
+        onClick={handleLogout}
+        sx={{
+          justifyContent: 'flex-start',
+          px: 2,
+          '&:hover': {
+            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+          },
+        }}
+      >
+        Logout
+      </Button>
+    </Box>
+  )
 
   const drawer = (
     <>
@@ -108,17 +154,17 @@ export default function Layout({ children }: LayoutProps) {
       <Divider />
       <List sx={{ 
         display: 'flex', 
-        flexDirection: 'row', 
-        flexWrap: 'wrap',
+        flexDirection: 'column',
         p: 1,
-        gap: 1
+        gap: 1,
+        flexGrow: 1
       }}>
         {menuLinks.map((link) => (
           <FramerMotion.motion.div
             key={link.text}
             whileHover="hover"
             variants={menuItemVariants}
-            style={{ width: 'auto', minWidth: '120px', flex: '1 1 auto' }}
+            style={{ width: '100%' }}
           >
             <ListItemStyled
               disablePadding
@@ -131,37 +177,24 @@ export default function Layout({ children }: LayoutProps) {
                 onClick={isMobile ? handleDrawerToggle : undefined}
                 sx={{
                   borderRadius: 1,
-                  justifyContent: 'center',
                   minHeight: '48px',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  py: 1
+                  px: 2,
                 }}
               >
-                <MenuIconStyled
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
+                <ListItemIcon 
+                  sx={{ 
+                    color: location.pathname === link.path ? 'primary.main' : 'inherit',
+                    minWidth: 40,
+                  }}
                 >
-                  <ListItemIcon 
-                    sx={{ 
-                      color: location.pathname === link.path ? 'primary.main' : 'inherit',
-                      minWidth: 'auto',
-                      mb: 0.5
-                    }}
-                  >
-                    {link.icon}
-                  </ListItemIcon>
-                </MenuIconStyled>
+                  {link.icon}
+                </ListItemIcon>
                 <ListItemText 
                   primary={link.text}
                   sx={{
-                    m: 0,
                     '& .MuiListItemText-primary': {
                       color: location.pathname === link.path ? 'primary.main' : 'inherit',
                       fontWeight: location.pathname === link.path ? 600 : 400,
-                      textAlign: 'center',
-                      fontSize: '0.875rem'
                     }
                   }}
                 />
@@ -170,6 +203,7 @@ export default function Layout({ children }: LayoutProps) {
           </FramerMotion.motion.div>
         ))}
       </List>
+      {userSection}
     </>
   )
 
@@ -259,4 +293,4 @@ export default function Layout({ children }: LayoutProps) {
       </Box>
     </Box>
   )
-} 
+}
