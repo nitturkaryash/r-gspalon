@@ -211,38 +211,32 @@ export default function InventoryBalanceReport() {
         </Alert>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         <TextField
-          placeholder="Search products..."
           size="small"
+          placeholder="Search products..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
+                <SearchIcon />
               </InputAdornment>
             ),
           }}
-          sx={{ width: 300 }}
+          sx={{ mr: 2, width: 300 }}
         />
         
         <Button
+          size="small"
           startIcon={<FilterListIcon />}
           endIcon={<ArrowDropDownIcon />}
-          variant="outlined"
-          size="small"
           onClick={handleOpenFilterMenu}
+          variant={filterLowStock ? "contained" : "outlined"}
+          color={filterLowStock ? "warning" : "primary"}
+          sx={{ mr: 2 }}
         >
-          Filters
-          {filterLowStock && (
-            <Chip 
-              label="Low Stock" 
-              size="small" 
-              color="warning" 
-              sx={{ ml: 1, height: 20 }} 
-            />
-          )}
+          Filters {filterLowStock && "(1)"}
         </Button>
         
         <Menu
@@ -265,155 +259,133 @@ export default function InventoryBalanceReport() {
         </Typography>
       </Box>
 
-      <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: theme.shape.borderRadius }}>
-        <TableContainer sx={{ maxHeight: 600 }}>
-          <Table stickyHeader aria-label="inventory balance table">
-            <TableHead>
+      <TableContainer component={Paper} sx={{ width: '100%', mb: 3, boxShadow: 1 }}>
+        <Table stickyHeader aria-label="inventory balance table">
+          <TableHead>
+            <TableRow>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'product_name'}
+                  direction={orderBy === 'product_name' ? order : 'asc'}
+                  onClick={() => handleRequestSort('product_name')}
+                >
+                  Product Name
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'hsn_code'}
+                  direction={orderBy === 'hsn_code' ? order : 'asc'}
+                  onClick={() => handleRequestSort('hsn_code')}
+                >
+                  HSN Code
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'unit'}
+                  direction={orderBy === 'unit' ? order : 'asc'}
+                  onClick={() => handleRequestSort('unit')}
+                >
+                  Unit
+                </TableSortLabel>
+              </TableCell>
+              <TableCell align="right">
+                <TableSortLabel
+                  active={orderBy === 'balance_qty'}
+                  direction={orderBy === 'balance_qty' ? order : 'asc'}
+                  onClick={() => handleRequestSort('balance_qty')}
+                >
+                  Balance Qty
+                </TableSortLabel>
+              </TableCell>
+              <TableCell align="right">
+                <TableSortLabel
+                  active={orderBy === 'avg_rate'}
+                  direction={orderBy === 'avg_rate' ? order : 'asc'}
+                  onClick={() => handleRequestSort('avg_rate')}
+                >
+                  Average Rate
+                </TableSortLabel>
+              </TableCell>
+              <TableCell align="right">
+                <TableSortLabel
+                  active={orderBy === 'balance_value'}
+                  direction={orderBy === 'balance_value' ? order : 'asc'}
+                  onClick={() => handleRequestSort('balance_value')}
+                >
+                  Balance Value
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading && filteredStock.length === 0 ? (
               <TableRow>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'product_name'}
-                    direction={orderBy === 'product_name' ? order : 'asc'}
-                    onClick={() => handleRequestSort('product_name')}
-                  >
-                    Product Name
-                  </TableSortLabel>
+                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
+                  <CircularProgress size={40} />
+                  <Typography variant="body2" sx={{ mt: 2 }}>
+                    Loading inventory data...
+                  </Typography>
                 </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'hsn_code'}
-                    direction={orderBy === 'hsn_code' ? order : 'asc'}
-                    onClick={() => handleRequestSort('hsn_code')}
-                  >
-                    HSN Code
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'unit'}
-                    direction={orderBy === 'unit' ? order : 'asc'}
-                    onClick={() => handleRequestSort('unit')}
-                  >
-                    Unit
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell align="right">
-                  <TableSortLabel
-                    active={orderBy === 'balance_qty'}
-                    direction={orderBy === 'balance_qty' ? order : 'asc'}
-                    onClick={() => handleRequestSort('balance_qty')}
-                  >
-                    Balance Qty
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell align="right">
-                  <TableSortLabel
-                    active={orderBy === 'avg_rate'}
-                    direction={orderBy === 'avg_rate' ? order : 'asc'}
-                    onClick={() => handleRequestSort('avg_rate')}
-                  >
-                    Average Rate
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell align="right">
-                  <TableSortLabel
-                    active={orderBy === 'balance_value'}
-                    direction={orderBy === 'balance_value' ? order : 'asc'}
-                    onClick={() => handleRequestSort('balance_value')}
-                  >
-                    Balance Value
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>Status</TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading && filteredStock.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                    <CircularProgress size={40} />
-                    <Typography variant="body2" sx={{ mt: 2 }}>
-                      Loading inventory data...
+            ) : filteredStock.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body1">
+                    No inventory data found.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    {searchQuery ? 'Try adjusting your search criteria.' : 'Import stock data to view inventory balance.'}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredStock.map((item) => (
+                <TableRow 
+                  key={item.id}
+                  hover
+                >
+                  <TableCell>{item.product_name}</TableCell>
+                  <TableCell>{item.hsn_code}</TableCell>
+                  <TableCell>{item.unit}</TableCell>
+                  <TableCell align="right">
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        fontWeight: item.balance_qty !== null && item.balance_qty <= lowStockThreshold 
+                          ? 'medium' 
+                          : 'normal'
+                      }}
+                    >
+                      {formatNumber(item.balance_qty)}
                     </Typography>
                   </TableCell>
-                </TableRow>
-              ) : filteredStock.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                    <Typography variant="body1">
-                      No inventory data found.
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                      {searchQuery ? 'Try adjusting your search criteria.' : 'Import stock data to view inventory balance.'}
-                    </Typography>
+                  <TableCell align="right">{formatCurrency(item.avg_rate)}</TableCell>
+                  <TableCell align="right">{formatCurrency(item.balance_value)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={
+                        item.balance_qty === null 
+                          ? 'Unknown' 
+                          : item.balance_qty <= 0 
+                            ? 'Out of Stock' 
+                            : item.balance_qty <= lowStockThreshold 
+                              ? 'Low Stock' 
+                              : 'In Stock'
+                      }
+                      size="small"
+                      color={getStockStatusColor(item.balance_qty)}
+                      sx={{ fontWeight: 'normal' }}
+                    />
                   </TableCell>
                 </TableRow>
-              ) : (
-                filteredStock.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    hover
-                    sx={{ 
-                      '&:last-child td, &:last-child th': { border: 0 },
-                      backgroundColor: item.balance_qty !== null && item.balance_qty <= 0 
-                        ? `${theme.palette.error.light}10` 
-                        : 'inherit'
-                    }}
-                  >
-                    <TableCell>
-                      <Box sx={{ maxWidth: 250 }}>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            fontWeight: 'medium',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          {item.product_name}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>{item.hsn_code}</TableCell>
-                    <TableCell>{item.unit}</TableCell>
-                    <TableCell align="right">
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          fontWeight: 'medium',
-                          color: item.balance_qty !== null && item.balance_qty <= lowStockThreshold 
-                            ? theme.palette.warning.main 
-                            : 'inherit'
-                        }}
-                      >
-                        {formatNumber(item.balance_qty)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">{formatCurrency(item.avg_rate)}</TableCell>
-                    <TableCell align="right">{formatCurrency(item.balance_value)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={
-                          item.balance_qty === null 
-                            ? 'Unknown' 
-                            : item.balance_qty <= 0 
-                              ? 'Out of Stock' 
-                              : item.balance_qty <= lowStockThreshold 
-                                ? 'Low Stock' 
-                                : 'In Stock'
-                        }
-                        size="small"
-                        color={getStockStatusColor(item.balance_qty)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
     </Box>
   );
 } 

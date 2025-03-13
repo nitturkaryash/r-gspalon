@@ -9,7 +9,8 @@ import {
   CircularProgress,
   Divider,
   Stack,
-  Chip
+  Chip,
+  useTheme
 } from '@mui/material';
 import {
   CloudUpload as CloudUploadIcon,
@@ -56,6 +57,7 @@ const StatsCard = styled(Paper)(({ theme }) => ({
 export default function StockDataExtractor() {
   const [file, setFile] = useState<File | null>(null);
   const { loading, error, stats, extractStockData } = useStockManagement();
+  const theme = useTheme();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
@@ -141,30 +143,61 @@ export default function StockDataExtractor() {
           <AlertTitle>Success</AlertTitle>
           Stock data has been successfully extracted and stored!
 
-          <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+          <Stack direction="row" spacing={2} sx={{ mt: 2, flexWrap: 'wrap', gap: 2 }}>
             <StatsCard>
               <Typography variant="body2" color="text.secondary">
                 Products
               </Typography>
-              <Typography variant="h6">{stats.products}</Typography>
+              <Typography variant="h6">{stats.productsProcessed}</Typography>
             </StatsCard>
             <StatsCard>
               <Typography variant="body2" color="text.secondary">
                 Purchases
               </Typography>
-              <Typography variant="h6">{stats.purchases}</Typography>
+              <Typography variant="h6">{stats.purchasesProcessed}</Typography>
             </StatsCard>
             <StatsCard>
               <Typography variant="body2" color="text.secondary">
                 Sales
               </Typography>
-              <Typography variant="h6">{stats.sales}</Typography>
+              <Typography variant="h6">{stats.salesProcessed}</Typography>
             </StatsCard>
             <StatsCard>
               <Typography variant="body2" color="text.secondary">
                 Consumption
               </Typography>
-              <Typography variant="h6">{stats.consumption}</Typography>
+              <Typography variant="h6">{stats.consumptionProcessed}</Typography>
+            </StatsCard>
+            <StatsCard sx={{ 
+              backgroundColor: theme.palette.warning.light, 
+              border: `1px solid ${theme.palette.warning.main}`,
+              position: 'relative',
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                borderWidth: '0 20px 20px 0',
+                borderStyle: 'solid',
+                borderColor: `${theme.palette.warning.main} transparent`,
+              }
+            }}>
+              <Typography variant="body2" fontWeight="medium" color="text.primary">
+                Cash Sales → Consumption
+              </Typography>
+              <Typography variant="h6">{stats.cashSalesConverted}</Typography>
+              <Chip 
+                size="small" 
+                color="warning" 
+                label="Auto-converted" 
+                sx={{ mt: 1 }}
+              />
+            </StatsCard>
+            <StatsCard>
+              <Typography variant="body2" color="text.secondary">
+                Balance Updated
+              </Typography>
+              <Typography variant="h6">{stats.balanceStockUpdated}</Typography>
             </StatsCard>
           </Stack>
         </Alert>

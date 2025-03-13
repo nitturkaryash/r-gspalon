@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, Outlet } from 'react-router-dom'
 import {
   Box,
   Drawer,
@@ -42,10 +42,6 @@ import { useAuth } from '../hooks/useAuth'
 
 const drawerWidth = 240
 
-interface LayoutProps {
-  children: React.ReactNode
-}
-
 interface MenuLink {
   text: string
   path: string
@@ -85,7 +81,7 @@ const menuItemVariants = {
   },
 }
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout() {
   const theme = useTheme()
   const location = useLocation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -289,7 +285,7 @@ export default function Layout({ children }: LayoutProps) {
           backgroundColor: 'background.default',
         }}
       >
-        {children}
+        <Outlet />
       </Box>
     </Box>
   )

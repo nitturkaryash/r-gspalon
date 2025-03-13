@@ -15,7 +15,7 @@ import { exportInventoryToExcel } from '../utils/excelExporter';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // Hook for inventory management functions
-export function useStockManagement() {
+export function useInventoryManagement() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<ProcessingStats | null>(null);
