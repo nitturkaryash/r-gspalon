@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import pandas as pd
 import numpy as np
@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 import uuid
 from datetime import datetime
 import re
+import tempfile
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -718,6 +720,618 @@ def get_cash_sales():
             'cash_sales': cash_sales
         })
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/inventory/parse-excel', methods=['POST'])
+def parse_inventory_excel():
+    """Parse the STOCK DETAILS Excel file and organize data according to requirements."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        return jsonify({'error': 'File must be an Excel file (.xlsx or .xls)'}), 400
+    
+    try:
+        # Read the Excel file, specifying header rows
+        # For a multi-header Excel, we'll read with header=None first and then process
+        df = pd.read_excel(file, sheet_name="STOCK DETAILS", header=None)
+        
+        # Determine the structure of the file
+        # Find header rows that contain our key section titles
+        purchase_header_row = None
+        sales_header_row = None
+        consumption_header_row = None
+        balance_header_row = None
+        
+        for idx, row in enumerate(df.values):
+            row_str = ' '.join(str(cell) for cell in row if pd.notna(cell))
+            if 'PURCHASE - STOCK IN' in row_str:
+                purchase_header_row = idx
+            elif 'SALES TO CUSTOMER - STOCK OUT' in row_str:
+                sales_header_row = idx
+            elif 'SALON CONSUMPTION - STOCK OUT' in row_str:
+                consumption_header_row = idx
+            elif 'BALANCE STOCK' in row_str:
+                balance_header_row = idx
+        
+        if purchase_header_row is None or sales_header_row is None or consumption_header_row is None:
+            return jsonify({'error': 'Invalid Excel format: Missing required sections'}), 400
+        
+        # Extract data from each section
+        # For each section, we need to:
+        # 1. Find the actual column headers (typically one row after the section title)
+        # 2. Map the unnamed columns to proper names
+        # 3. Extract the data rows until the next section
+        
+        # Process Purchase section
+        purchase_cols_row = purchase_header_row + 1
+        purchase_data_start = purchase_header_row + 2
+        purchase_data_end = sales_header_row - 1 if sales_header_row else len(df)
+        
+        purchase_headers = df.iloc[purchase_cols_row].to_list()
+        purchase_headers = [str(col) if pd.notna(col) else f"Unnamed_{i}" for i, col in enumerate(purchase_headers)]
+        
+        # Map unnamed columns to meaningful names for purchases
+        purchase_col_mapping = {
+            'Unnamed_0': 'Date',
+            'Unnamed_1': 'Product Name',
+            'Unnamed_2': 'HSN Code',
+            'Unnamed_3': 'UNITS',
+            'Unnamed_4': 'Invoice No.',
+            'Unnamed_5': 'Qty.',
+            'Unnamed_6': 'Price Incl. GST',
+            'Unnamed_7': 'Price Ex. GST',
+            'Unnamed_8': 'Discount %',
+            'Unnamed_9': 'Purchase Cost Per Unit Ex. GST',
+            'Unnamed_10': 'GST %',
+            'Unnamed_11': 'Taxable Value',
+            'Unnamed_12': 'IGST',
+            'Unnamed_13': 'CGST',
+            'Unnamed_14': 'SGST',
+            'Unnamed_15': 'Invoice Value'
+        }
+        
+        # Apply the column mapping
+        mapped_purchase_headers = [purchase_col_mapping.get(col, col) for col in purchase_headers]
+        
+        # Extract purchase data
+        purchase_data = df.iloc[purchase_data_start:purchase_data_end].copy()
+        purchase_data.columns = purchase_headers
+        # Rename columns using the mapping
+        purchase_data = purchase_data.rename(columns=purchase_col_mapping)
+        
+        # Process Sales section
+        sales_cols_row = sales_header_row + 1
+        sales_data_start = sales_header_row + 2
+        sales_data_end = consumption_header_row - 1 if consumption_header_row else len(df)
+        
+        sales_headers = df.iloc[sales_cols_row].to_list()
+        sales_headers = [str(col) if pd.notna(col) else f"Unnamed_{i}" for i, col in enumerate(sales_headers)]
+        
+        # Map unnamed columns to meaningful names for sales
+        sales_col_mapping = {
+            'Unnamed_0': 'Date',
+            'Unnamed_1': 'Product Name',
+            'Unnamed_2': 'HSN Code',
+            'Unnamed_3': 'UNITS',
+            'Unnamed_4': 'Invoice No.',
+            'Unnamed_5': 'Qty.',
+            'Unnamed_6': 'Purchase Cost Per Unit Ex. GST',
+            'Unnamed_7': 'Purchase GST %',
+            'Unnamed_8': 'Purchase Taxable Value',
+            'Unnamed_9': 'Purchase IGST',
+            'Unnamed_10': 'Purchase CGST',
+            'Unnamed_11': 'Purchase SGST',
+            'Unnamed_12': 'Total Purchase Cost',
+            'Unnamed_13': 'MRP Incl. GST',
+            'Unnamed_14': 'MRP Ex. GST',
+            'Unnamed_15': 'Discount %',
+            'Unnamed_16': 'Discounted Sales Rate Ex. GST',
+            'Unnamed_17': 'Sales GST %',
+            'Unnamed_18': 'Sales Taxable Value',
+            'Unnamed_19': 'Sales IGST',
+            'Unnamed_20': 'Sales CGST',
+            'Unnamed_21': 'Sales SGST',
+            'Unnamed_22': 'Invoice Value'
+        }
+        
+        # Apply the column mapping
+        mapped_sales_headers = [sales_col_mapping.get(col, col) for col in sales_headers]
+        
+        # Extract sales data
+        sales_data = df.iloc[sales_data_start:sales_data_end].copy()
+        sales_data.columns = sales_headers
+        # Rename columns using the mapping
+        sales_data = sales_data.rename(columns=sales_col_mapping)
+        
+        # Process Consumption section
+        consumption_cols_row = consumption_header_row + 1
+        consumption_data_start = consumption_header_row + 2
+        consumption_data_end = balance_header_row - 1 if balance_header_row else len(df)
+        
+        consumption_headers = df.iloc[consumption_cols_row].to_list()
+        consumption_headers = [str(col) if pd.notna(col) else f"Unnamed_{i}" for i, col in enumerate(consumption_headers)]
+        
+        # Map unnamed columns to meaningful names for consumption
+        consumption_col_mapping = {
+            'Unnamed_0': 'Date',
+            'Unnamed_1': 'Product Name',
+            'Unnamed_2': 'HSN Code',
+            'Unnamed_3': 'UNITS',
+            'Unnamed_4': 'Requisition Voucher No.',
+            'Unnamed_5': 'Qty.',
+            'Unnamed_6': 'Purchase Cost Per Unit Ex. GST',
+            'Unnamed_7': 'Purchase GST %',
+            'Unnamed_8': 'Taxable Value',
+            'Unnamed_9': 'IGST',
+            'Unnamed_10': 'CGST',
+            'Unnamed_11': 'SGST',
+            'Unnamed_12': 'Total Purchase Cost',
+        }
+        
+        # Apply the column mapping
+        mapped_consumption_headers = [consumption_col_mapping.get(col, col) for col in consumption_headers]
+        
+        # Extract consumption data
+        consumption_data = df.iloc[consumption_data_start:consumption_data_end].copy()
+        consumption_data.columns = consumption_headers
+        # Rename columns using the mapping
+        consumption_data = consumption_data.rename(columns=consumption_col_mapping)
+        
+        # Process Balance Stock if available
+        balance_data = None
+        if balance_header_row is not None:
+            balance_cols_row = balance_header_row + 1
+            balance_data_start = balance_header_row + 2
+            
+            balance_headers = df.iloc[balance_cols_row].to_list()
+            balance_headers = [str(col) if pd.notna(col) else f"Unnamed_{i}" for i, col in enumerate(balance_headers)]
+            
+            # Map unnamed columns to meaningful names for balance
+            balance_col_mapping = {
+                'Unnamed_0': 'Product Name',
+                'Unnamed_1': 'HSN Code',
+                'Unnamed_2': 'UNITS',
+                'Unnamed_3': 'Qty.',
+                'Unnamed_4': 'Taxable Value',
+                'Unnamed_5': 'IGST',
+                'Unnamed_6': 'CGST',
+                'Unnamed_7': 'SGST',
+                'Unnamed_8': 'Invoice Value',
+            }
+            
+            # Extract balance data
+            balance_data = df.iloc[balance_data_start:].copy()
+            if not balance_data.empty:
+                balance_data.columns = balance_headers
+                # Rename columns using the mapping
+                balance_data = balance_data.rename(columns=balance_col_mapping)
+        
+        # Clean data by removing rows with no product name
+        purchase_data = purchase_data[purchase_data['Product Name'].notna()]
+        sales_data = sales_data[sales_data['Product Name'].notna()]
+        consumption_data = consumption_data[consumption_data['Product Name'].notna()]
+        if balance_data is not None:
+            balance_data = balance_data[balance_data['Product Name'].notna()]
+        
+        # Create a response dictionary with all data sections
+        response_data = {
+            'purchases': purchase_data.where(pd.notna(purchase_data), None).to_dict(orient='records'),
+            'sales': sales_data.where(pd.notna(sales_data), None).to_dict(orient='records'),
+            'consumption': consumption_data.where(pd.notna(consumption_data), None).to_dict(orient='records')
+        }
+        
+        if balance_data is not None:
+            response_data['balance'] = balance_data.where(pd.notna(balance_data), None).to_dict(orient='records')
+            
+        # Extract unique products from all sections
+        unique_products = set()
+        
+        # Add products from purchases
+        for row in purchase_data.itertuples():
+            if pd.notna(row._2):  # Product Name
+                product_key = (str(row._2), str(row._3) if pd.notna(row._3) else '', str(row._4) if pd.notna(row._4) else '')
+                unique_products.add(product_key)
+        
+        # Add products from sales
+        for row in sales_data.itertuples():
+            if pd.notna(row._2):  # Product Name
+                product_key = (str(row._2), str(row._3) if pd.notna(row._3) else '', str(row._4) if pd.notna(row._4) else '')
+                unique_products.add(product_key)
+        
+        # Add products from consumption
+        for row in consumption_data.itertuples():
+            if pd.notna(row._2):  # Product Name
+                product_key = (str(row._2), str(row._3) if pd.notna(row._3) else '', str(row._4) if pd.notna(row._4) else '')
+                unique_products.add(product_key)
+        
+        # Convert unique products to list of dictionaries
+        products_list = []
+        for product in unique_products:
+            products_list.append({
+                'product_name': product[0],
+                'hsn_code': product[1],
+                'units': product[2]
+            })
+        
+        response_data['products'] = products_list
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/inventory/export-excel', methods=['POST'])
+def export_inventory_excel():
+    """Generate an Excel file with inventory data in the same format as the original STOCK DETAILS file."""
+    try:
+        # Get data from request
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        # Check if required keys exist
+        required_keys = ['products', 'purchases', 'sales', 'consumption', 'balance_stock']
+        for key in required_keys:
+            if key not in data:
+                return jsonify({'error': f'Missing data section: {key}'}), 400
+        
+        # Create a pandas ExcelWriter object
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            temp_filename = tmp.name
+            
+        writer = pd.ExcelWriter(temp_filename, engine='openpyxl')
+        
+        # Create the main sheet
+        sheet_name = 'STOCK DETAILS'
+        
+        # Convert data sections to DataFrames
+        products_df = pd.DataFrame(data['products'])
+        purchases_df = pd.DataFrame(data['purchases'])
+        sales_df = pd.DataFrame(data['sales'])
+        consumption_df = pd.DataFrame(data['consumption'])
+        balance_df = pd.DataFrame(data['balance_stock'])
+        
+        # Create a new DataFrame for the Excel structure
+        excel_data = []
+        
+        # Add title row
+        excel_data.append(['STOCK DETAILS'])
+        excel_data.append([])  # Empty row
+        
+        # Add purchase section
+        excel_data.append(['PURCHASE - STOCK IN'])
+        
+        # Add purchase header
+        purchase_header = [
+            'Date', 'Product Name', 'HSN Code', 'UNITS', 'Invoice No.', 'Qty.',
+            'Price Incl. GST', 'Price Ex. GST', 'Discount %', 'Purchase Cost Per Unit Ex. GST', 
+            'GST %', 'Taxable Value', 'IGST', 'CGST', 'SGST', 'Invoice Value'
+        ]
+        excel_data.append(purchase_header)
+        
+        # Add purchase data
+        for _, row in purchases_df.iterrows():
+            excel_data.append([
+                row.get('date', ''),
+                row.get('product_name', ''),
+                row.get('hsn_code', ''),
+                row.get('units', ''),
+                row.get('invoice_no', ''),
+                row.get('qty', 0),
+                row.get('price_incl_gst', 0),
+                row.get('price_ex_gst', 0),
+                row.get('discount_percentage', 0),
+                row.get('purchase_cost_per_unit_ex_gst', 0),
+                row.get('gst_percentage', 0),
+                row.get('taxable_value', 0),
+                row.get('igst', 0),
+                row.get('cgst', 0),
+                row.get('sgst', 0),
+                row.get('invoice_value', 0)
+            ])
+        
+        excel_data.append([])  # Empty row
+        
+        # Add sales section
+        excel_data.append(['SALES TO CUSTOMER - STOCK OUT'])
+        
+        # Add sales header
+        sales_header = [
+            'Date', 'Product Name', 'HSN Code', 'UNITS', 'Invoice No.', 'Qty.',
+            'Purchase Cost Per Unit Ex. GST', 'Purchase GST %', 'Purchase Taxable Value',
+            'Purchase IGST', 'Purchase CGST', 'Purchase SGST', 'Total Purchase Cost',
+            'MRP Incl. GST', 'MRP Ex. GST', 'Discount %', 'Discounted Sales Rate Ex. GST',
+            'Sales GST %', 'Sales Taxable Value', 'Sales IGST', 'Sales CGST', 'Sales SGST',
+            'Invoice Value'
+        ]
+        excel_data.append(sales_header)
+        
+        # Add sales data
+        for _, row in sales_df.iterrows():
+            excel_data.append([
+                row.get('date', ''),
+                row.get('product_name', ''),
+                row.get('hsn_code', ''),
+                row.get('units', ''),
+                row.get('invoice_no', ''),
+                row.get('qty', 0),
+                row.get('purchase_cost_per_unit_ex_gst', 0),
+                row.get('purchase_gst_percentage', 0),
+                row.get('purchase_taxable_value', 0),
+                row.get('purchase_igst', 0),
+                row.get('purchase_cgst', 0),
+                row.get('purchase_sgst', 0),
+                row.get('total_purchase_cost', 0),
+                row.get('mrp_incl_gst', 0),
+                row.get('mrp_ex_gst', 0),
+                row.get('discount_percentage', 0),
+                row.get('discounted_sales_rate_ex_gst', 0),
+                row.get('sales_gst_percentage', 0),
+                row.get('sales_taxable_value', 0),
+                row.get('sales_igst', 0),
+                row.get('sales_cgst', 0),
+                row.get('sales_sgst', 0),
+                row.get('invoice_value', 0)
+            ])
+        
+        excel_data.append([])  # Empty row
+        
+        # Add consumption section
+        excel_data.append(['SALON CONSUMPTION - STOCK OUT'])
+        
+        # Add consumption header
+        consumption_header = [
+            'Date', 'Product Name', 'HSN Code', 'UNITS', 'Requisition Voucher No.', 'Qty.',
+            'Purchase Cost Per Unit Ex. GST', 'Purchase GST %', 'Taxable Value',
+            'IGST', 'CGST', 'SGST', 'Total Purchase Cost'
+        ]
+        excel_data.append(consumption_header)
+        
+        # Add consumption data
+        for _, row in consumption_df.iterrows():
+            excel_data.append([
+                row.get('date', ''),
+                row.get('product_name', ''),
+                row.get('hsn_code', ''),
+                row.get('units', ''),
+                row.get('requisition_voucher_no', ''),
+                row.get('qty', 0),
+                row.get('purchase_cost_per_unit_ex_gst', 0),
+                row.get('purchase_gst_percentage', 0),
+                row.get('taxable_value', 0),
+                row.get('igst', 0),
+                row.get('cgst', 0),
+                row.get('sgst', 0),
+                row.get('total_purchase_cost', 0)
+            ])
+        
+        excel_data.append([])  # Empty row
+        
+        # Add balance section
+        excel_data.append(['BALANCE STOCK'])
+        
+        # Add balance header
+        balance_header = [
+            'Product Name', 'HSN Code', 'UNITS', 'Qty.', 'Taxable Value',
+            'IGST', 'CGST', 'SGST', 'Invoice Value'
+        ]
+        excel_data.append(balance_header)
+        
+        # Add balance data
+        for _, row in balance_df.iterrows():
+            excel_data.append([
+                row.get('product_name', ''),
+                row.get('hsn_code', ''),
+                row.get('units', ''),
+                row.get('qty', 0),
+                row.get('taxable_value', 0),
+                row.get('igst', 0),
+                row.get('cgst', 0),
+                row.get('sgst', 0),
+                row.get('invoice_value', 0)
+            ])
+        
+        # Create a DataFrame from the excel_data list
+        df = pd.DataFrame(excel_data)
+        
+        # Write to Excel
+        df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
+        
+        # Save the Excel file
+        writer.close()
+        
+        # Return the file
+        return send_file(temp_filename, as_attachment=True, download_name='STOCK_DETAILS_export.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/inventory/sync-pos', methods=['POST'])
+def sync_pos_with_inventory():
+    """Sync POS sales data with inventory system."""
+    try:
+        # Get data from request
+        data = request.json
+        if not data or 'pos_sales' not in data:
+            return jsonify({'error': 'No POS sales data provided'}), 400
+            
+        pos_sales = data['pos_sales']
+        
+        # Connect to database
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Could not connect to database'}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        
+        # Process each POS sale
+        processed_sales = []
+        errors = []
+        
+        for sale in pos_sales:
+            try:
+                # Check if this is a product (not a service)
+                if sale.get('type') != 'product':
+                    continue
+                    
+                # Get product details
+                product_id = sale.get('product_id')
+                if not product_id:
+                    errors.append(f"Missing product_id for sale: {sale}")
+                    continue
+                    
+                # Query to get product details
+                cursor.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+                product = cursor.fetchone()
+                
+                if not product:
+                    errors.append(f"Product not found for id: {product_id}")
+                    continue
+                    
+                # Query to get purchase cost information
+                cursor.execute("""
+                    SELECT 
+                        AVG(ex_gst) as avg_cost_ex_gst,
+                        AVG(igst / taxable_value) as avg_gst_percentage
+                    FROM purchases 
+                    WHERE product_id = %s
+                """, (product_id,))
+                purchase_info = cursor.fetchone()
+                
+                # Default values if no purchase info is found
+                purchase_cost_per_unit_ex_gst = purchase_info['avg_cost_ex_gst'] if purchase_info and purchase_info['avg_cost_ex_gst'] else 0
+                purchase_gst_percentage = purchase_info['avg_gst_percentage'] if purchase_info and purchase_info['avg_gst_percentage'] else 0.18
+                
+                # Calculate values for the sale
+                qty = sale.get('quantity', 1)
+                mrp_incl_gst = sale.get('price', 0)
+                sales_gst_percentage = sale.get('gst_percentage', 0.18)
+                
+                # Calculate ex GST price (formula: price_incl_gst / (1 + gst_rate))
+                mrp_ex_gst = mrp_incl_gst / (1 + sales_gst_percentage)
+                
+                # Calculate discounted values if discount is provided
+                discount_percentage = sale.get('discount_percentage', 0)
+                discounted_sales_rate_ex_gst = mrp_ex_gst * (1 - discount_percentage / 100)
+                
+                # Calculate taxable values
+                purchase_taxable_value = purchase_cost_per_unit_ex_gst * qty
+                sales_taxable_value = discounted_sales_rate_ex_gst * qty
+                
+                # Calculate GST values
+                purchase_igst = purchase_taxable_value * purchase_gst_percentage
+                sales_igst = sales_taxable_value * sales_gst_percentage
+                
+                # Split IGST into CGST and SGST (assuming equal split)
+                purchase_cgst = purchase_igst / 2
+                purchase_sgst = purchase_igst / 2
+                sales_cgst = sales_igst / 2
+                sales_sgst = sales_igst / 2
+                
+                # Calculate totals
+                total_purchase_cost = purchase_taxable_value + purchase_igst
+                invoice_value = sales_taxable_value + sales_igst
+                
+                # Create a sale record
+                sale_id = str(uuid.uuid4())
+                sale_date = sale.get('date', datetime.now().strftime('%Y-%m-%d'))
+                invoice_no = sale.get('invoice_no', f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}")
+                
+                # Insert sale record
+                cursor.execute("""
+                    INSERT INTO sales (
+                        id, product_id, date, invoice_no, qty, 
+                        incl_gst, ex_gst, taxable_value, igst, cgst, sgst, 
+                        invoice_value, customer, payment_method, 
+                        transaction_type, converted_to_consumption, created_at,
+                        purchase_cost_per_unit_ex_gst, purchase_gst_percentage,
+                        purchase_taxable_value, purchase_igst, purchase_cgst,
+                        purchase_sgst, total_purchase_cost, mrp_incl_gst,
+                        mrp_ex_gst, discount_percentage, discounted_sales_rate_ex_gst,
+                        sales_gst_percentage, sales_taxable_value, sales_igst,
+                        sales_cgst, sales_sgst
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, 
+                        %s, %s, %s, %s, %s, %s, 
+                        %s, %s, %s, 
+                        %s, %s, %s,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s
+                    )
+                """, (
+                    sale_id, product_id, sale_date, invoice_no, qty,
+                    mrp_incl_gst, mrp_ex_gst, sales_taxable_value, sales_igst, sales_cgst, sales_sgst,
+                    invoice_value, sale.get('customer_name', 'Walk-in'), sale.get('payment_method', 'cash'),
+                    'sale', False, datetime.now(),
+                    purchase_cost_per_unit_ex_gst, purchase_gst_percentage,
+                    purchase_taxable_value, purchase_igst, purchase_cgst,
+                    purchase_sgst, total_purchase_cost, mrp_incl_gst,
+                    mrp_ex_gst, discount_percentage, discounted_sales_rate_ex_gst,
+                    sales_gst_percentage, sales_taxable_value, sales_igst,
+                    sales_cgst, sales_sgst
+                ))
+                
+                # Update balance stock
+                cursor.execute("""
+                    SELECT * FROM balance_stock WHERE product_id = %s
+                """, (product_id,))
+                balance = cursor.fetchone()
+                
+                if balance:
+                    # Update existing balance
+                    new_qty = balance['qty'] - qty
+                    new_taxable_value = balance['taxable_value'] - purchase_taxable_value
+                    new_igst = balance['igst'] - purchase_igst
+                    new_cgst = balance['cgst'] - purchase_cgst
+                    new_sgst = balance['sgst'] - purchase_sgst
+                    new_invoice_value = balance['invoice_value'] - total_purchase_cost
+                    
+                    cursor.execute("""
+                        UPDATE balance_stock
+                        SET qty = %s, taxable_value = %s, igst = %s, cgst = %s, sgst = %s, invoice_value = %s, updated_at = %s
+                        WHERE id = %s
+                    """, (
+                        new_qty, new_taxable_value, new_igst, new_cgst, new_sgst, new_invoice_value, datetime.now(), balance['id']
+                    ))
+                else:
+                    # Create new balance record
+                    balance_id = str(uuid.uuid4())
+                    cursor.execute("""
+                        INSERT INTO balance_stock (id, product_id, qty, taxable_value, igst, cgst, sgst, invoice_value, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        balance_id, product_id, -qty, -purchase_taxable_value, -purchase_igst, -purchase_cgst, -purchase_sgst, -total_purchase_cost, datetime.now()
+                    ))
+                
+                processed_sales.append({
+                    'id': sale_id,
+                    'product_id': product_id,
+                    'qty': qty,
+                    'invoice_value': invoice_value
+                })
+                
+            except Exception as e:
+                errors.append(str(e))
+                continue
+        
+        # Commit changes
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'processed_sales': processed_sales,
+            'errors': errors
+        }), 200
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

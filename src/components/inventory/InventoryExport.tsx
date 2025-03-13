@@ -15,7 +15,7 @@ import {
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '../../supabaseClient';
 
 // Define types for our data
 interface Product {
@@ -28,17 +28,18 @@ interface Product {
 interface Purchase {
   id: string;
   product_id: string;
-  purchase_invoice_number: string;
-  purchase_quantity: number;
-  mrp_including_gst: number;
-  mrp_excluding_gst: number;
-  discount_percentage: number;
-  purchase_cost_per_unit: number;
-  gst_percentage: number;
-  purchase_taxable_value: number;
-  purchases_cgst: number;
-  purchases_sgst: number;
-  purchase_invoice_value: number;
+  date: string;
+  invoice_no: string;
+  qty: number;
+  incl_gst: number;
+  ex_gst: number;
+  taxable_value: number;
+  igst: number;
+  cgst: number;
+  sgst: number;
+  invoice_value: number;
+  supplier: string;
+  transaction_type: string;
   created_at: string;
   product?: Product;
 }
@@ -46,369 +47,368 @@ interface Purchase {
 interface Sale {
   id: string;
   product_id: string;
-  invoice_number: string;
-  quantity: number;
-  mrp_including_gst: number;
-  mrp_excluding_gst: number;
-  discount_percentage: number;
-  cost_per_unit: number;
-  gst_percentage: number;
+  date: string;
+  invoice_no: string;
+  qty: number;
+  incl_gst: number;
+  ex_gst: number;
   taxable_value: number;
+  igst: number;
   cgst: number;
   sgst: number;
   invoice_value: number;
+  customer: string;
+  payment_method: string;
+  transaction_type: string;
   created_at: string;
   product?: Product;
 }
 
-interface SalonUsage {
+interface Consumption {
   id: string;
   product_id: string;
-  reference_number: string;
-  quantity: number;
-  mrp_including_gst: number;
-  mrp_excluding_gst: number;
-  discount_percentage: number;
-  cost_per_unit: number;
-  gst_percentage: number;
-  taxable_value: number;
-  cgst: number;
-  sgst: number;
-  total_value: number;
+  date: string;
+  qty: number;
+  purpose: string;
+  transaction_type: string;
   created_at: string;
   product?: Product;
 }
 
-// Combined transaction type for export
 interface InventoryTransaction {
   'Transaction Type': string;
+  'Date': string;
   'Product Name': string;
   'HSN Code': string;
   'UNITS': string;
-  'Purchase Invoice Number': string;
-  'Purchase Qty': number;
-  'MRP Including GST': number;
-  'MRP Excluding GST': number;
-  'Discount on Purchase Percentage': number;
-  'Purchase Cost per Unit': number;
-  'GST Percentage': number;
-  'Purchase Taxable Value': number;
-  'Purchases CGST': number;
-  'Purchases SGST': number;
-  'Purchase Invoice Value': number;
+  'Invoice No.': string;
+  'Qty.': number;
+  'Incl. GST': number;
+  'Ex. GST': number;
+  'Taxable Value': number;
+  'IGST': number;
+  'CGST': number;
+  'SGST': number;
+  'Invoice Value': number;
+  'Supplier/Customer': string;
+  'Payment Method': string;
+  'Purpose': string;
 }
 
 const InventoryExport: React.FC = () => {
-  const [exportLoading, setExportLoading] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exportSuccess, setExportSuccess] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch purchases data
-  const { 
-    data: purchasesData, 
-    isLoading: purchasesLoading, 
-    error: purchasesError 
-  } = useQuery({
-    queryKey: ['purchases-export'],
+  // Fetch products
+  const { data: products, isLoading: productsLoading, error: productsError } = useQuery({
+    queryKey: ['products'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('purchases')
-        .select(`
-          *,
-          product:product_id (
-            id,
-            name,
-            hsn_code,
-            unit
-          )
-        `)
-        .order('created_at', { ascending: false });
-      
+      const { data, error } = await supabase.from('products').select('*');
       if (error) throw error;
+      return data as Product[];
+    }
+  });
+
+  // Fetch purchases
+  const { data: purchases, isLoading: purchasesLoading, error: purchasesError } = useQuery({
+    queryKey: ['purchases'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('purchases').select('*');
+      if (error) throw error;
+      
+      // Add product details to each purchase
+      if (data && products) {
+        return data.map(purchase => {
+          const product = products.find(p => p.id === purchase.product_id);
+          return { ...purchase, product };
+        });
+      }
+      
       return data as Purchase[];
-    }
+    },
+    enabled: !!products
   });
 
-  // Fetch sales data
-  const { 
-    data: salesData, 
-    isLoading: salesLoading, 
-    error: salesError 
-  } = useQuery({
-    queryKey: ['sales-export'],
+  // Fetch sales
+  const { data: sales, isLoading: salesLoading, error: salesError } = useQuery({
+    queryKey: ['sales'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sales')
-        .select(`
-          *,
-          product:product_id (
-            id,
-            name,
-            hsn_code,
-            unit
-          )
-        `)
-        .order('created_at', { ascending: false });
-      
+      const { data, error } = await supabase.from('sales').select('*');
       if (error) throw error;
+      
+      // Add product details to each sale
+      if (data && products) {
+        return data.map(sale => {
+          const product = products.find(p => p.id === sale.product_id);
+          return { ...sale, product };
+        });
+      }
+      
       return data as Sale[];
-    }
+    },
+    enabled: !!products
   });
 
-  // Fetch salon usage data
-  const { 
-    data: salonUsageData, 
-    isLoading: salonUsageLoading, 
-    error: salonUsageError 
-  } = useQuery({
-    queryKey: ['salon-usage-export'],
+  // Fetch consumption data (salon usage)
+  const { data: consumption, isLoading: consumptionLoading, error: consumptionError } = useQuery({
+    queryKey: ['consumption'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('salon_usage')
-        .select(`
-          *,
-          product:product_id (
-            id,
-            name,
-            hsn_code,
-            unit
-          )
-        `)
-        .order('created_at', { ascending: false });
-      
+      const { data, error } = await supabase.from('consumption').select('*');
       if (error) throw error;
-      return data as SalonUsage[];
-    }
+      
+      // Add product details to each consumption record
+      if (data && products) {
+        return data.map(usage => {
+          const product = products.find(p => p.id === usage.product_id);
+          return { ...usage, product };
+        });
+      }
+      
+      return data as Consumption[];
+    },
+    enabled: !!products
   });
 
-  // Check if any data is loading
-  const isLoading = purchasesLoading || salesLoading || salonUsageLoading;
+  const isLoading = productsLoading || purchasesLoading || salesLoading || consumptionLoading;
+  const anyError = productsError || purchasesError || salesError || consumptionError;
 
-  // Check for errors
-  const error = purchasesError || salesError || salonUsageError;
-
-  // Transform purchases data to the common format
   const transformPurchases = (purchases: Purchase[]): InventoryTransaction[] => {
     return purchases.map(purchase => ({
-      'Transaction Type': 'Purchase',
-      'Product Name': purchase.product?.name || 'Unknown',
+      'Transaction Type': 'PURCHASE',
+      'Date': purchase.date || '',
+      'Product Name': purchase.product?.name || '',
       'HSN Code': purchase.product?.hsn_code || '',
       'UNITS': purchase.product?.unit || '',
-      'Purchase Invoice Number': purchase.purchase_invoice_number,
-      'Purchase Qty': purchase.purchase_quantity,
-      'MRP Including GST': purchase.mrp_including_gst,
-      'MRP Excluding GST': purchase.mrp_excluding_gst,
-      'Discount on Purchase Percentage': purchase.discount_percentage,
-      'Purchase Cost per Unit': purchase.purchase_cost_per_unit,
-      'GST Percentage': purchase.gst_percentage,
-      'Purchase Taxable Value': purchase.purchase_taxable_value,
-      'Purchases CGST': purchase.purchases_cgst,
-      'Purchases SGST': purchase.purchases_sgst,
-      'Purchase Invoice Value': purchase.purchase_invoice_value
+      'Invoice No.': purchase.invoice_no || '',
+      'Qty.': purchase.qty || 0,
+      'Incl. GST': purchase.incl_gst || 0,
+      'Ex. GST': purchase.ex_gst || 0,
+      'Taxable Value': purchase.taxable_value || 0,
+      'IGST': purchase.igst || 0,
+      'CGST': purchase.cgst || 0,
+      'SGST': purchase.sgst || 0,
+      'Invoice Value': purchase.invoice_value || 0,
+      'Supplier/Customer': purchase.supplier || '',
+      'Payment Method': '',
+      'Purpose': ''
     }));
   };
 
-  // Transform sales data to the common format
   const transformSales = (sales: Sale[]): InventoryTransaction[] => {
     return sales.map(sale => ({
-      'Transaction Type': 'Sale',
-      'Product Name': sale.product?.name || 'Unknown',
+      'Transaction Type': 'SALE',
+      'Date': sale.date || '',
+      'Product Name': sale.product?.name || '',
       'HSN Code': sale.product?.hsn_code || '',
       'UNITS': sale.product?.unit || '',
-      'Purchase Invoice Number': sale.invoice_number,
-      'Purchase Qty': sale.quantity,
-      'MRP Including GST': sale.mrp_including_gst,
-      'MRP Excluding GST': sale.mrp_excluding_gst,
-      'Discount on Purchase Percentage': sale.discount_percentage,
-      'Purchase Cost per Unit': sale.cost_per_unit,
-      'GST Percentage': sale.gst_percentage,
-      'Purchase Taxable Value': sale.taxable_value,
-      'Purchases CGST': sale.cgst,
-      'Purchases SGST': sale.sgst,
-      'Purchase Invoice Value': sale.invoice_value
+      'Invoice No.': sale.invoice_no || '',
+      'Qty.': sale.qty || 0,
+      'Incl. GST': sale.incl_gst || 0,
+      'Ex. GST': sale.ex_gst || 0,
+      'Taxable Value': sale.taxable_value || 0,
+      'IGST': sale.igst || 0,
+      'CGST': sale.cgst || 0,
+      'SGST': sale.sgst || 0,
+      'Invoice Value': sale.invoice_value || 0,
+      'Supplier/Customer': sale.customer || '',
+      'Payment Method': sale.payment_method || '',
+      'Purpose': ''
     }));
   };
 
-  // Transform salon usage data to the common format
-  const transformSalonUsage = (usages: SalonUsage[]): InventoryTransaction[] => {
-    return usages.map(usage => ({
-      'Transaction Type': 'Consumption',
-      'Product Name': usage.product?.name || 'Unknown',
+  const transformConsumption = (consumption: Consumption[]): InventoryTransaction[] => {
+    return consumption.map(usage => ({
+      'Transaction Type': 'CONSUMPTION',
+      'Date': usage.date || '',
+      'Product Name': usage.product?.name || '',
       'HSN Code': usage.product?.hsn_code || '',
       'UNITS': usage.product?.unit || '',
-      'Purchase Invoice Number': usage.reference_number,
-      'Purchase Qty': usage.quantity,
-      'MRP Including GST': usage.mrp_including_gst,
-      'MRP Excluding GST': usage.mrp_excluding_gst,
-      'Discount on Purchase Percentage': usage.discount_percentage,
-      'Purchase Cost per Unit': usage.cost_per_unit,
-      'GST Percentage': usage.gst_percentage,
-      'Purchase Taxable Value': usage.taxable_value,
-      'Purchases CGST': usage.cgst,
-      'Purchases SGST': usage.sgst,
-      'Purchase Invoice Value': usage.total_value
+      'Invoice No.': '',
+      'Qty.': usage.qty || 0,
+      'Incl. GST': 0,
+      'Ex. GST': 0,
+      'Taxable Value': 0,
+      'IGST': 0,
+      'CGST': 0,
+      'SGST': 0,
+      'Invoice Value': 0,
+      'Supplier/Customer': '',
+      'Payment Method': '',
+      'Purpose': usage.purpose || ''
     }));
   };
 
   // Handle export
   const handleExport = () => {
     try {
-      setExportLoading(true);
-      setExportError(null);
-      setExportSuccess(false);
+      setExporting(true);
+      setError(null);
+      setExported(false);
 
       // Combine all transactions
       const allTransactions: InventoryTransaction[] = [
-        ...(purchasesData ? transformPurchases(purchasesData) : []),
-        ...(salesData ? transformSales(salesData) : []),
-        ...(salonUsageData ? transformSalonUsage(salonUsageData) : [])
+        ...(purchases ? transformPurchases(purchases) : []),
+        ...(sales ? transformSales(sales) : []),
+        ...(consumption ? transformConsumption(consumption) : [])
       ];
 
-      // Create workbook
+      if (allTransactions.length === 0) {
+        setError('No transactions found to export');
+        setExporting(false);
+        return;
+      }
+
+      // Create a new workbook
       const wb = XLSX.utils.book_new();
 
-      // Create worksheet from transactions
+      // Create a worksheet with all transactions
       const ws = XLSX.utils.json_to_sheet(allTransactions, {
         header: [
           'Transaction Type',
+          'Date',
           'Product Name',
           'HSN Code',
           'UNITS',
-          'Purchase Invoice Number',
-          'Purchase Qty',
-          'MRP Including GST',
-          'MRP Excluding GST',
-          'Discount on Purchase Percentage',
-          'Purchase Cost per Unit',
-          'GST Percentage',
-          'Purchase Taxable Value',
-          'Purchases CGST',
-          'Purchases SGST',
-          'Purchase Invoice Value'
+          'Invoice No.',
+          'Qty.',
+          'Incl. GST',
+          'Ex. GST',
+          'Taxable Value',
+          'IGST',
+          'CGST',
+          'SGST',
+          'Invoice Value',
+          'Supplier/Customer',
+          'Payment Method',
+          'Purpose'
         ]
       });
 
       // Set column widths
       const wscols = [
         { wch: 15 }, // Transaction Type
+        { wch: 15 }, // Date
         { wch: 30 }, // Product Name
         { wch: 12 }, // HSN Code
         { wch: 10 }, // UNITS
-        { wch: 25 }, // Purchase Invoice Number
-        { wch: 15 }, // Purchase Qty
-        { wch: 18 }, // MRP Including GST
-        { wch: 18 }, // MRP Excluding GST
-        { wch: 30 }, // Discount on Purchase Percentage
-        { wch: 22 }, // Purchase Cost per Unit
-        { wch: 15 }, // GST Percentage
-        { wch: 22 }, // Purchase Taxable Value
-        { wch: 15 }, // Purchases CGST
-        { wch: 15 }, // Purchases SGST
-        { wch: 22 }  // Purchase Invoice Value
+        { wch: 25 }, // Invoice No.
+        { wch: 15 }, // Qty.
+        { wch: 18 }, // Incl. GST
+        { wch: 18 }, // Ex. GST
+        { wch: 22 }, // Taxable Value
+        { wch: 15 }, // IGST
+        { wch: 15 }, // CGST
+        { wch: 15 }, // SGST
+        { wch: 22 }, // Invoice Value
+        { wch: 30 }, // Supplier/Customer
+        { wch: 25 }, // Payment Method
+        { wch: 30 }  // Purpose
       ];
       ws['!cols'] = wscols;
 
-      // Add worksheet to workbook
+      // Add the worksheet to the workbook
       XLSX.utils.book_append_sheet(wb, ws, 'Inventory Transactions');
 
-      // Generate Excel file
-      const currentDate = new Date().toISOString().slice(0, 10);
+      // Generate a filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
       XLSX.writeFile(wb, `Salon_Inventory_Transactions_${currentDate}.xlsx`);
 
-      setExportSuccess(true);
+      setExported(true);
     } catch (err: any) {
       console.error('Export error:', err);
-      setExportError(err.message || 'Failed to export data');
+      setError(err.message || 'Failed to export data');
     } finally {
-      setExportLoading(false);
+      setExporting(false);
     }
   };
 
   // Calculate transaction counts
-  const purchaseCount = purchasesData?.length || 0;
-  const salesCount = salesData?.length || 0;
-  const consumptionCount = salonUsageData?.length || 0;
+  const purchaseCount = purchases?.length || 0;
+  const salesCount = sales?.length || 0;
+  const consumptionCount = consumption?.length || 0;
   const totalTransactions = purchaseCount + salesCount + consumptionCount;
 
   return (
-    <Paper sx={{ p: 3, mb: 4 }}>
-      <Typography variant="h5" gutterBottom>
-        Export Inventory Transactions
-      </Typography>
-      
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Export all inventory transactions (purchases, sales, and salon consumption) to a single Excel file.
-        The export includes all transaction details with standardized column headers.
-      </Typography>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Error loading transaction data: {(error as Error).message}
-        </Alert>
-      )}
-
-      {exportError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {exportError}
-        </Alert>
-      )}
-
-      {exportSuccess && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          Inventory transactions exported successfully!
-        </Alert>
-      )}
-
-      <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Typography variant="subtitle1">
-          Transaction Summary
+    <Box>
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>
+          Export Inventory Transactions
         </Typography>
-        
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-          <Chip 
-            label={`Purchases: ${purchaseCount}`} 
-            color="primary" 
-            variant="outlined" 
-          />
-          <Chip 
-            label={`Sales: ${salesCount}`} 
-            color="secondary" 
-            variant="outlined" 
-          />
-          <Chip 
-            label={`Consumption: ${consumptionCount}`} 
-            color="info" 
-            variant="outlined" 
-          />
-          <Chip 
-            label={`Total: ${totalTransactions}`} 
-            color="default" 
-            variant="outlined" 
-            icon={<InfoIcon />}
-          />
-        </Box>
-      </Box>
 
-      <Divider sx={{ mb: 3 }} />
-
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-        <Button
-          variant="contained"
-          startIcon={isLoading || exportLoading ? <CircularProgress size={20} color="inherit" /> : <FileDownloadIcon />}
-          onClick={handleExport}
-          disabled={isLoading || exportLoading || totalTransactions === 0}
-          sx={{ mr: 2 }}
-        >
-          {isLoading ? 'Loading Data...' : exportLoading ? 'Exporting...' : 'Export to Excel'}
-        </Button>
-        
-        {isLoading && (
-          <Typography variant="body2" color="text.secondary">
-            Loading transaction data...
-          </Typography>
+        {anyError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            Error loading transaction data: {(anyError as Error).message}
+          </Alert>
         )}
-      </Box>
-    </Paper>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
+        {exported && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            Inventory transactions exported successfully!
+          </Alert>
+        )}
+
+        {isLoading ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+            <CircularProgress size={24} />
+            <Typography>Loading inventory data...</Typography>
+          </Box>
+        ) : (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body1" paragraph>
+              The export will include:
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              <Chip 
+                icon={<InfoIcon />} 
+                label={`${purchaseCount} Purchases`} 
+                variant="outlined" 
+                color="primary"
+              />
+              <Chip 
+                icon={<InfoIcon />} 
+                label={`${salesCount} Sales`} 
+                variant="outlined" 
+                color="success"
+              />
+              <Chip 
+                icon={<InfoIcon />} 
+                label={`${consumptionCount} Consumption Records`} 
+                variant="outlined" 
+                color="warning"
+              />
+            </Box>
+          </Box>
+        )}
+        
+        <Divider sx={{ my: 2 }} />
+        
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Button
+            variant="contained"
+            startIcon={isLoading || exporting ? <CircularProgress size={20} color="inherit" /> : <FileDownloadIcon />}
+            onClick={handleExport}
+            disabled={isLoading || exporting || totalTransactions === 0}
+            sx={{ mr: 2 }}
+          >
+            {isLoading ? 'Loading Data...' : exporting ? 'Exporting...' : 'Export to Excel'}
+          </Button>
+          
+          <Typography variant="body2" color="text.secondary">
+            {totalTransactions > 0 
+              ? `Total ${totalTransactions} transactions will be exported` 
+              : 'No transactions available to export'}
+          </Typography>
+        </Box>
+      </Paper>
+    </Box>
   );
 };
 

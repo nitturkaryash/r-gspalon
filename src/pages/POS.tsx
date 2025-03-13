@@ -318,15 +318,55 @@ export default function POS() {
   // Function to calculate pending amount accurately
   const calculateAccuratePendingAmount = (total: number, payments: PaymentDetail[]) => {
     const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-    return Math.max(0, total - totalPaid);
+    // Use strict equality check
+    return totalPaid === total ? 0 : Math.max(0, total - totalPaid);
   };
 
   // Update pending amount when split payments change
   useEffect(() => {
     if (isSplitPayment) {
-      setPendingAmount(calculateAccuratePendingAmount(total, splitPayments));
+      // ABSOLUTELY FAILSAFE APPROACH: Work with paise/cents for precision
+      const totalInPaise = Math.round(total * 100);
+      const subtotalInPaise = Math.round(orderSubtotal * 100);
+      const taxInPaise = Math.round(tax * 100);
+      const paidInPaise = Math.round(splitPayments.reduce((sum, payment) => {
+        return sum + Math.round(payment.amount * 100);
+      }, 0));
+      
+      // Calculate remaining in paise
+      let remainingInPaise = totalInPaise - paidInPaise;
+      
+      // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
+      if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
+        console.log('CRITICAL - useEffect - Amount paid equals service subtotal, forcing pending to 0');
+        remainingInPaise = 0;
+      }
+      
+      // If within 1 rupee or negative, force to zero
+      if (remainingInPaise <= 100) {
+        remainingInPaise = 0;
+      }
+      
+      // Critical logic: if paid equals or exceeds total, remaining MUST be 0
+      if (paidInPaise >= totalInPaise) {
+        remainingInPaise = 0;
+      }
+      
+      // Calculate remaining in rupees
+      const remainingAmount = Math.max(0, remainingInPaise / 100);
+      
+      // Critical logging to diagnose the issue
+      console.log('CRITICAL - useEffect - Total (paise):', totalInPaise);
+      console.log('CRITICAL - useEffect - Subtotal (paise):', subtotalInPaise);
+      console.log('CRITICAL - useEffect - Tax (paise):', taxInPaise);
+      console.log('CRITICAL - useEffect - Paid (paise):', paidInPaise);
+      console.log('CRITICAL - useEffect - Remaining (paise):', remainingInPaise);
+      console.log('CRITICAL - useEffect - Setting pending amount to:', remainingAmount);
+      
+      // DIRECT UPDATE: Set to 0 if very close to zero or paid exceeds total
+      setPendingAmount(remainingAmount);
     }
-  }, [splitPayments, total, isSplitPayment]);
+  }, [splitPayments, total, isSplitPayment, orderSubtotal, tax]);
 
   // Handle pre-filled appointment data
   useEffect(() => {
@@ -480,21 +520,46 @@ export default function POS() {
     setSplitPayments(updatedSplitPayments);
     setNewPaymentAmount(0);
 
-    // Calculate total paid
-    const totalPaid = calculateTotalPaid(updatedSplitPayments);
-
-    console.log('Total Paid:', totalPaid);
-    console.log('Total:', total);
-    console.log('Pending Amount before update:', pendingAmount);
-
-    // Set pending amount to zero if total paid covers the total
-    if (totalPaid >= total) {
-      setPendingAmount(0);
-    } else {
-      setPendingAmount(calculateAccuratePendingAmount(total, updatedSplitPayments));
+    // MOST ROBUST APPROACH: Convert to paise/cents for precision
+    const totalInPaise = Math.round(total * 100);
+    const subtotalInPaise = Math.round(orderSubtotal * 100);
+    const taxInPaise = Math.round(tax * 100);
+    const paidInPaise = Math.round(updatedSplitPayments.reduce((sum, payment) => {
+      return sum + Math.round(payment.amount * 100);
+    }, 0));
+    
+    // Calculate remaining in paise
+    let remainingInPaise = totalInPaise - paidInPaise;
+    
+    // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
+    if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
+      console.log('CRITICAL - handleAddSplitPayment - Amount paid equals service subtotal, forcing pending to 0');
+      remainingInPaise = 0;
     }
-
-    console.log('Pending Amount after update:', pendingAmount);
+    
+    // If within 1 rupee or negative, force to zero
+    if (remainingInPaise <= 100) {
+      remainingInPaise = 0;
+    }
+    
+    // Critical logic: if paid equals or exceeds total, remaining MUST be 0
+    if (paidInPaise >= totalInPaise) {
+      remainingInPaise = 0;
+    }
+    
+    // Calculate remaining in rupees
+    const remainingAmount = Math.max(0, remainingInPaise / 100);
+    
+    // Critical logging to diagnose the issue
+    console.log('CRITICAL - handleAddSplitPayment - Total (paise):', totalInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Subtotal (paise):', subtotalInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Tax (paise):', taxInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Paid (paise):', paidInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Remaining (paise):', remainingInPaise);
+    console.log('CRITICAL - handleAddSplitPayment - Final pending amount:', remainingAmount);
+    
+    // Set the pending amount to the calculated remaining
+    setPendingAmount(remainingAmount);
   };
   
   // Remove a payment from the split payments list
@@ -556,8 +621,58 @@ export default function POS() {
         is_walk_in: true,
         appointment_time: formattedAppointmentTime,
         payments: isSplitPayment ? splitPayments : undefined,
-        pending_amount: isSplitPayment ? pendingAmount : 0,
       };
+      
+      // ROBUST APPROACH for pending amount calculation
+      if (isSplitPayment) {
+        // COMPLETELY NEW APPROACH: Convert to paise (cents) for precision
+        const totalInPaise = Math.round(total * 100);
+        const subtotalInPaise = Math.round(orderSubtotal * 100);
+        const taxInPaise = Math.round(tax * 100);
+        const paidInPaise = Math.round(splitPayments.reduce((sum, payment) => {
+          return sum + Math.round(payment.amount * 100);
+        }, 0));
+        
+        // Calculate remaining in paise
+        let remainingInPaise = totalInPaise - paidInPaise;
+        
+        // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
+        if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
+          console.log('CRITICAL - Create Order - Amount paid equals service subtotal, forcing pending to 0');
+          remainingInPaise = 0;
+        }
+        
+        // If very close to zero or negative, force to zero
+        if (remainingInPaise <= 100) { // Within 1 rupee
+          remainingInPaise = 0;
+        }
+        
+        // If total paid is at least equal to total, force pending to 0
+        if (paidInPaise >= totalInPaise) {
+          remainingInPaise = 0;
+        }
+        
+        // Convert back to rupees
+        const pendingAmount = remainingInPaise / 100;
+        
+        // FORCE DIRECT CHECK - If total paid equals or exceeds total, pending MUST be 0
+        if (paidInPaise >= totalInPaise) {
+          orderData.pending_amount = 0;
+        } else {
+          orderData.pending_amount = pendingAmount;
+        }
+        
+        // Critical logging to diagnose the issue
+        console.log('CRITICAL - Create Order - Total in paise:', totalInPaise);
+        console.log('CRITICAL - Create Order - Subtotal in paise:', subtotalInPaise);
+        console.log('CRITICAL - Create Order - Tax in paise:', taxInPaise);
+        console.log('CRITICAL - Create Order - Paid in paise:', paidInPaise);
+        console.log('CRITICAL - Create Order - Pending in paise:', remainingInPaise);
+        console.log('CRITICAL - Create Order - Final pending amount:', orderData.pending_amount);
+      } else {
+        // No split payment, set pending to 0
+        orderData.pending_amount = 0;
+      }
       
       // Create order
       const response = await createWalkInOrder(orderData);

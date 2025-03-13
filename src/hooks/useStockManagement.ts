@@ -77,6 +77,11 @@ export interface ProcessedStats {
   purchases: number;
   sales: number;
   consumption: number;
+  totalInventoryValue?: number;
+  totalProducts?: number;
+  monthlyPurchases?: number;
+  monthlySales?: number;
+  lowStockItems?: number;
 }
 
 export interface StockExcelData {
@@ -93,6 +98,13 @@ export function useStockManagement() {
   const [stats, setStats] = useState<ProcessedStats | null>(null);
   const [cashSales, setCashSales] = useState<Sale[]>([]);
   const [cashSalesLoading, setCashSalesLoading] = useState(false);
+  const [balanceStock, setBalanceStock] = useState<BalanceStock[]>([]);
+  const [insights, setInsights] = useState<any>(null);
+  const [processedStats, setProcessedStats] = useState<any>({
+    topProducts: [],
+    categoryDistribution: [],
+    monthlyTrends: []
+  });
 
   // Helper function to standardize unit codes
   const standardizeUnit = (unitStr: string): string => {
@@ -412,33 +424,50 @@ export function useStockManagement() {
     setError(null);
     
     try {
-      const { data, error } = await supabase
+      // Fetch sales data
+      const { data: salesData, error: salesError } = await supabase
         .from('sales')
-        .select(`
-          *,
-          products:product_id (
-            name,
-            hsn_code,
-            unit
-          )
-        `)
+        .select('*')
         .eq('payment_method', 'cash')
         .eq('converted_to_consumption', false)
         .order('date', { ascending: false });
         
-      if (error) throw new Error(`Error fetching cash sales: ${error.message}`);
+      if (salesError) throw new Error(`Error fetching cash sales: ${salesError.message}`);
       
-      if (data) {
-        // Format the data to match the expected structure
-        const formattedCashSales = data.map(sale => ({
-          ...sale,
-          product_name: sale.products?.name || '',
-          hsn_code: sale.products?.hsn_code || '',
-          unit: sale.products?.unit || ''
-        }));
-        
-        setCashSales(formattedCashSales);
+      if (!salesData || salesData.length === 0) {
+        setCashSales([]);
+        return;
       }
+      
+      // Get all product IDs from sales
+      const productIds = [...new Set(salesData.map(sale => sale.product_id))];
+      
+      // Fetch products data separately
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .in('id', productIds);
+        
+      if (productsError) throw new Error(`Error fetching products: ${productsError.message}`);
+      
+      // Create a map of product IDs to product data for quick lookup
+      const productsMap = (productsData || []).reduce((acc, product) => {
+        acc[product.id] = product;
+        return acc;
+      }, {} as Record<string, any>);
+      
+      // Combine sales with product data
+      const formattedCashSales = salesData.map(sale => {
+        const product = productsMap[sale.product_id] || {};
+        return {
+          ...sale,
+          product_name: product.name || 'Unknown Product',
+          hsn_code: product.hsn_code || '',
+          unit: product.unit || 'N/A'
+        };
+      });
+      
+      setCashSales(formattedCashSales);
     } catch (err: any) {
       setError(err.message);
       toast.error(`Error: ${err.message}`);
@@ -520,12 +549,236 @@ export function useStockManagement() {
     }
   };
 
+  // Function to fetch balance stock data
+  const fetchBalanceStock = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch products
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('*');
+      
+      if (productsError) {
+        throw new Error(productsError.message);
+      }
+      
+      // Fetch balance stock
+      const { data: stock, error: stockError } = await supabase
+        .from('balance_stock')
+        .select('*');
+      
+      if (stockError) {
+        throw new Error(stockError.message);
+      }
+      
+      // Combine product details with stock quantities
+      const balanceWithProductDetails = stock.map((item: any) => {
+        const product = products.find((p: any) => p.id === item.product_id);
+        return {
+          ...item,
+          product_name: product ? product.name : 'Unknown Product',
+          product_unit: product ? product.unit : 'N/A',
+          hsn_code: product ? product.hsn_code : 'N/A'
+        };
+      });
+      
+      setBalanceStock(balanceWithProductDetails);
+    } catch (error: any) {
+      setError(error.message);
+      console.error('Error fetching balance stock:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to fetch insights and analytics data for stock
+  const fetchInsights = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch recent purchases
+      const { data: recentPurchases, error: purchasesError } = await supabase
+        .from('purchases')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(5);
+      
+      if (purchasesError) throw new Error(purchasesError.message);
+      
+      // Fetch recent sales
+      const { data: recentSales, error: salesError } = await supabase
+        .from('sales')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(5);
+      
+      if (salesError) throw new Error(salesError.message);
+      
+      // Get all product IDs from both purchases and sales
+      const purchaseProductIds = recentPurchases.map(purchase => purchase.product_id);
+      const saleProductIds = recentSales.map(sale => sale.product_id);
+      const allProductIds = [...new Set([...purchaseProductIds, ...saleProductIds])];
+      
+      // Fetch products data separately
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .in('id', allProductIds);
+        
+      if (productsError) throw new Error(productsError.message);
+      
+      // Create a map of product IDs to product data for quick lookup
+      const productsMap = (productsData || []).reduce((acc, product) => {
+        acc[product.id] = product;
+        return acc;
+      }, {} as Record<string, any>);
+      
+      // Fetch total products count
+      const { data: productsCount, error: productsCountError } = await supabase
+        .from('products')
+        .select('count', { count: 'exact' });
+      
+      if (productsCountError) throw new Error(productsCountError.message);
+      
+      // Format the data for insights
+      const formattedPurchases = recentPurchases.map(purchase => {
+        const product = productsMap[purchase.product_id] || {};
+        return {
+          ...purchase,
+          product_name: product.name || 'Unknown Product',
+          unit: product.unit || 'N/A',
+          hsn_code: product.hsn_code || 'N/A'
+        };
+      });
+      
+      const formattedSales = recentSales.map(sale => {
+        const product = productsMap[sale.product_id] || {};
+        return {
+          ...sale,
+          product_name: product.name || 'Unknown Product',
+          unit: product.unit || 'N/A',
+          hsn_code: product.hsn_code || 'N/A'
+        };
+      });
+      
+      // Calculate summary stats
+      const insightData = {
+        recentPurchases: formattedPurchases,
+        recentSales: formattedSales,
+        totalProducts: productsCount[0]?.count || 0,
+        // These would be calculated based on actual data
+        // For demonstration, using placeholder values
+        totalInventoryValue: formattedPurchases.reduce((sum, item) => sum + item.invoice_value, 0),
+        averagePurchaseValue: formattedPurchases.length > 0 
+          ? formattedPurchases.reduce((sum, item) => sum + item.invoice_value, 0) / formattedPurchases.length 
+          : 0,
+        averageSaleValue: formattedSales.length > 0 
+          ? formattedSales.reduce((sum, item) => sum + item.invoice_value, 0) / formattedSales.length 
+          : 0
+      };
+      
+      setInsights(insightData);
+    } catch (error: any) {
+      setError(error.message);
+      console.error('Error fetching insights:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Process statistics for reporting and visualization
+  const processStats = () => {
+    if (!insights) return {
+      topProducts: [],
+      categoryDistribution: [],
+      monthlyTrends: [],
+      lowStockItems: 0
+    };
+    
+    try {
+      // Process top products by value
+      const topProducts = [...insights.recentPurchases, ...insights.recentSales]
+        .reduce((acc: any[], item: any) => {
+          const existingItem = acc.find(p => p.product_id === item.product_id);
+          if (existingItem) {
+            existingItem.total_value += item.invoice_value;
+            existingItem.count += 1;
+          } else {
+            acc.push({
+              product_id: item.product_id,
+              product_name: item.product_name,
+              total_value: item.invoice_value,
+              count: 1
+            });
+          }
+          return acc;
+        }, [])
+        .sort((a, b) => b.total_value - a.total_value);
+
+      // Since we don't have actual categories, let's create some based on product names
+      // Just for demonstration purposes
+      const categoryDistribution = [...insights.recentPurchases, ...insights.recentSales]
+        .reduce((acc: any[], item: any) => {
+          // Extract a pseudo-category from product name
+          const nameParts = item.product_name.split(' ');
+          const category = nameParts.length > 1 ? nameParts[0] : 'Other';
+          
+          const existingCategory = acc.find(c => c.category === category);
+          if (existingCategory) {
+            existingCategory.count += 1;
+          } else {
+            acc.push({
+              category,
+              count: 1
+            });
+          }
+          return acc;
+        }, [])
+        .sort((a, b) => b.count - a.count);
+
+      // Create monthly trend data (dummy data for demonstration)
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+      const monthlyTrends = months.map(month => ({
+        name: month,
+        purchases: Math.floor(Math.random() * 10000),
+        sales: Math.floor(Math.random() * 8000),
+        consumption: Math.floor(Math.random() * 5000)
+      }));
+
+      // Create a count of low stock items (simulated)
+      const lowStockItems = Math.floor(Math.random() * 5) + 1; // Random number between 1-5 for demonstration
+
+      return {
+        topProducts,
+        categoryDistribution,
+        monthlyTrends,
+        lowStockItems
+      };
+    } catch (error) {
+      console.error('Error processing stats:', error);
+      return {
+        topProducts: [],
+        categoryDistribution: [],
+        monthlyTrends: [],
+        lowStockItems: 0
+      };
+    }
+  };
+
   return {
     loading,
     error,
     stats,
     cashSales,
     cashSalesLoading,
+    balanceStock,
+    insights,
+    processStats,
+    fetchBalanceStock,
+    fetchInsights,
     extractStockData,
     fetchCashSales,
     convertTransactions

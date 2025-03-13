@@ -30,45 +30,47 @@ import { useStockManagement } from '../../hooks/useStockManagement';
 
 export default function StockInsights() {
   const theme = useTheme();
-  const { loading, error, stats, processStats, fetchInsights } = useStockManagement();
+  const { loading, error, stats, processStats, fetchInsights, insights } = useStockManagement();
   const [topProducts, setTopProducts] = useState<{ name: string; value: number }[]>([]);
   const [categoryDistribution, setCategoryDistribution] = useState<{ name: string; value: number }[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<{ name: string; purchases: number; sales: number; consumption: number }[]>([]);
+  const [processedData, setProcessedData] = useState<any>(null);
 
   useEffect(() => {
     fetchInsights();
   }, []);
 
   useEffect(() => {
-    if (stats) {
-      processStats();
+    if (insights) {
+      const data = processStats();
+      setProcessedData(data);
     }
-  }, [stats]);
+  }, [insights, processStats]);
 
   useEffect(() => {
-    if (processStats.topProducts) {
-      setTopProducts(processStats.topProducts.slice(0, 5).map(p => ({
+    if (processedData && processedData.topProducts) {
+      setTopProducts(processedData.topProducts.slice(0, 5).map((p: any) => ({
         name: p.product_name,
         value: p.total_value
       })));
     }
 
-    if (processStats.categoryDistribution) {
-      setCategoryDistribution(processStats.categoryDistribution.map(c => ({
+    if (processedData && processedData.categoryDistribution) {
+      setCategoryDistribution(processedData.categoryDistribution.map((c: any) => ({
         name: c.category || 'Uncategorized',
         value: c.count
       })));
     }
 
-    if (processStats.monthlyTrends) {
-      setMonthlyTrends(processStats.monthlyTrends.map(m => ({
-        name: m.month,
-        purchases: m.purchases_value,
-        sales: m.sales_value,
-        consumption: m.consumption_value
+    if (processedData && processedData.monthlyTrends) {
+      setMonthlyTrends(processedData.monthlyTrends.map((m: any) => ({
+        name: m.name,
+        purchases: m.purchases,
+        sales: m.sales,
+        consumption: m.consumption
       })));
     }
-  }, [processStats]);
+  }, [processedData]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -111,7 +113,7 @@ export default function StockInsights() {
     );
   }
 
-  if (!stats || Object.keys(stats).length === 0) {
+  if (!insights) {
     return (
       <Alert severity="info" sx={{ mb: 3 }}>
         No stock data available for insights. Please import stock data first.
@@ -138,10 +140,10 @@ export default function StockInsights() {
                 Total Inventory Value
               </Typography>
               <Typography variant="h5" sx={{ mt: 1, fontWeight: 'bold' }}>
-                {formatCurrency(stats.totalInventoryValue || 0)}
+                {formatCurrency(insights?.totalInventoryValue || 0)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Across {stats.totalProducts || 0} products
+                Across {insights?.totalProducts || 0} products
               </Typography>
             </CardContent>
           </Card>
@@ -157,10 +159,10 @@ export default function StockInsights() {
                 Monthly Purchases
               </Typography>
               <Typography variant="h5" sx={{ mt: 1, fontWeight: 'bold' }}>
-                {formatCurrency(stats.monthlyPurchases || 0)}
+                {formatCurrency(insights?.averagePurchaseValue * 30 || 0)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Last 30 days
+                Last 30 days (estimated)
               </Typography>
             </CardContent>
           </Card>
@@ -176,10 +178,10 @@ export default function StockInsights() {
                 Monthly Sales
               </Typography>
               <Typography variant="h5" sx={{ mt: 1, fontWeight: 'bold' }}>
-                {formatCurrency(stats.monthlySales || 0)}
+                {formatCurrency(insights?.averageSaleValue * 30 || 0)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Last 30 days
+                Last 30 days (estimated)
               </Typography>
             </CardContent>
           </Card>
@@ -195,7 +197,7 @@ export default function StockInsights() {
                 Low Stock Items
               </Typography>
               <Typography variant="h5" sx={{ mt: 1, fontWeight: 'bold' }}>
-                {stats.lowStockItems || 0}
+                {(processedData?.lowStockItems || 0)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 Products below threshold
