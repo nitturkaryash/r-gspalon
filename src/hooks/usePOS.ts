@@ -230,9 +230,13 @@ export function usePOS() {
         }));
       
       if (productUpdates.length > 0) {
-        const result = updateProductInventory(productUpdates);
-        if (!result.success) {
-          console.error('Failed to update product inventory');
+        try {
+          const result = await updateProductInventory(productUpdates);
+          if (!result.success) {
+            console.error('Failed to update product inventory');
+          }
+        } catch (error) {
+          console.error('Error updating product inventory:', error);
         }
       }
       
@@ -371,9 +375,13 @@ export function usePOS() {
         }));
       
       if (productUpdates.length > 0) {
-        const result = updateProductInventory(productUpdates);
-        if (!result.success) {
-          console.error('Failed to update product inventory');
+        try {
+          const result = await updateProductInventory(productUpdates);
+          if (!result.success) {
+            console.error('Failed to update product inventory');
+          }
+        } catch (error) {
+          console.error('Error updating product inventory:', error);
         }
       }
       

@@ -15,7 +15,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 // Eagerly loaded pages
 import Dashboard from './pages/Dashboard';
 import Members from './pages/Members';
-import Inventory from './pages/Inventory';
 
 // Lazy-loaded components
 const Appointments = lazy(() => import('./pages/Appointments'));
@@ -26,7 +25,7 @@ const ServiceCollectionDetail = lazy(() => import('./pages/ServiceCollectionDeta
 const Orders = lazy(() => import('./pages/Orders'));
 const POS = lazy(() => import('./pages/POS'));
 const CollectionDetail = lazy(() => import('./pages/CollectionDetail'));
-const InventoryExportPage = lazy(() => import('./pages/InventoryExportPage'));
+const Inventory = lazy(() => import('./pages/Inventory'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -66,8 +65,6 @@ function App() {
             <Route path="pos" element={<POS />} />
             <Route path="members" element={<Members />} />
             <Route path="inventory" element={<Inventory />} />
-            <Route path="inventory/export" element={<InventoryExportPage />} />
-            <Route path="inventory/:id" element={<CollectionDetail />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
