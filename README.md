@@ -1,4 +1,18 @@
-# React + TypeScript + Vite
+# R&G Salon Management System
+
+This application provides a comprehensive salon management system for R&G Salon, including appointment scheduling, inventory management, POS, and client management.
+
+## Error Handling Improvements
+
+The application includes robust error handling mechanisms to ensure a smooth user experience:
+
+- **ErrorBoundary Component**: Catches unhandled errors in React components and displays a user-friendly fallback UI.
+- **Supabase Error Handling**: Enhanced error handling for database operations with detailed error messages.
+- **Debugging Utilities**: Tools for diagnosing Supabase connection issues and table accessibility.
+- **Loading State Management**: Proper handling of loading states for all asynchronous operations.
+- **Toast Notifications**: User-friendly notifications for success and error states.
+
+## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
