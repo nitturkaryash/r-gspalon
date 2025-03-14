@@ -1,243 +1,353 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'react-toastify'
-import { v4 as uuidv4 } from 'uuid'
-import type { Product } from '../models/inventoryTypes'
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { v4 as uuidv4 } from 'uuid';
 
-// Initial demo products
-const initialProducts: Product[] = [
+// Extended Product type for this hook
+export interface ProductWithExtras {
+  id: string;
+  name: string;
+  hsn_code: string;
+  units: string;
+  collection_id?: string;
+  price?: number;
+  cost?: number;
+  stock?: number;
+  status?: 'active' | 'inactive';
+  created_at?: string;
+}
+
+// Mock data
+let mockProducts: ProductWithExtras[] = [
   {
     id: '1',
+    name: 'Shampoo',
+    hsn_code: '3305',
+    units: 'ml',
     collection_id: '1', // Hair Care
-    name: 'Moisturizing Shampoo',
-    price: 899,
-    cost: 450,
-    stock: 25, // Initial stock
+    price: 250,
+    cost: 150,
+    stock: 50,
     status: 'active',
-    created_at: new Date().toISOString()
+    created_at: '2023-01-01T00:00:00Z'
   },
   {
     id: '2',
+    name: 'Conditioner',
+    hsn_code: '3305',
+    units: 'ml',
     collection_id: '1', // Hair Care
-    name: 'Deep Conditioner',
-    price: 1299,
-    cost: 580,
-    stock: 18, // Initial stock
+    price: 200,
+    cost: 120,
+    stock: 45,
     status: 'active',
-    created_at: new Date().toISOString()
+    created_at: '2023-01-01T00:00:00Z'
   },
   {
     id: '3',
+    name: 'Hair Gel',
+    hsn_code: '3305',
+    units: 'g',
     collection_id: '2', // Styling Products
-    name: 'Strong Hold Gel',
-    price: 699,
-    cost: 320,
-    stock: 30, // Initial stock
+    price: 180,
+    cost: 100,
+    stock: 30,
     status: 'active',
-    created_at: new Date().toISOString()
+    created_at: '2023-01-01T00:00:00Z'
   },
   {
     id: '4',
+    name: 'Hair Spray',
+    hsn_code: '3305',
+    units: 'ml',
     collection_id: '2', // Styling Products
-    name: 'Volume Mousse',
-    price: 799,
-    cost: 350,
-    stock: 12, // Initial stock
+    price: 220,
+    cost: 130,
+    stock: 25,
     status: 'inactive',
-    created_at: new Date().toISOString()
+    created_at: '2023-01-01T00:00:00Z'
   }
 ];
 
-// Load products from localStorage or use initialProducts
-const loadProductsFromStorage = (): Product[] => {
+// Export the updateProductInventory function directly
+export const updateProductInventory = async (updates: Array<{ productId: string; quantity: number }>): Promise<{ success: boolean; message?: string }> => {
   try {
-    const savedProducts = localStorage.getItem('products');
-    
-    if (savedProducts) {
-      return JSON.parse(savedProducts);
-    }
-    
-    // If no products found in localStorage, save the initial ones
-    localStorage.setItem('products', JSON.stringify(initialProducts));
-    return initialProducts;
-  } catch (error) {
-    console.error('Error loading products from localStorage:', error);
-    return initialProducts;
-  }
-};
-
-// Get the initial products and store in variable for mutations
-let mockProducts = loadProductsFromStorage();
-
-// Save the updated products to localStorage
-const saveProductsToStorage = (products: Product[]) => {
-  try {
-    localStorage.setItem('products', JSON.stringify(products));
-  } catch (error) {
-    console.error('Error saving products to localStorage:', error);
-  }
-};
-
-/**
- * Update product inventory when products are purchased
- * @param productUpdates Array of product IDs and quantities to update
- * @returns Object with success status and updated products
- */
-export const updateProductInventory = (
-  productUpdates: Array<{ productId: string; quantity: number }>
-): { success: boolean; updatedProducts?: Product[] } => {
-  try {
-    // Load the latest products from storage
-    const currentProducts = loadProductsFromStorage();
-    
-    // Create a copy of the products array to update
-    const updatedProducts = [...currentProducts];
-    
-    // Update each product's stock
-    for (const update of productUpdates) {
-      const productIndex = updatedProducts.findIndex(p => p.id === update.productId);
-      
-      if (productIndex === -1) {
-        console.error(`Product with ID ${update.productId} not found`);
-        continue;
+    // Process each update
+    for (const update of updates) {
+      const product = mockProducts.find(p => p.id === update.productId);
+      if (!product) {
+        throw new Error(`Product not found: ${update.productId}`);
       }
       
-      const product = updatedProducts[productIndex];
-      const newStock = Math.max(0, product.stock - update.quantity);
+      const newStock = Math.max(0, (product.stock || 0) - update.quantity);
       
       // Update the product stock
-      updatedProducts[productIndex] = {
-        ...product,
-        stock: newStock
-      };
+      const index = mockProducts.findIndex(p => p.id === update.productId);
+      mockProducts[index] = { ...mockProducts[index], stock: newStock };
     }
     
-    // Save the updated products to storage
-    mockProducts = updatedProducts;
-    saveProductsToStorage(updatedProducts);
-    
-    return { success: true, updatedProducts };
-  } catch (error) {
-    console.error('Error updating product inventory:', error);
-    return { success: false };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'Failed to update product inventory' };
   }
 };
 
-export function useProducts(collectionId?: string) {
-  const queryClient = useQueryClient()
+export const useProducts = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const { data: products, isLoading } = useQuery({
-    queryKey: ['products', collectionId],
-    queryFn: async () => {
-      // Simulate network delay
+  const fetchProducts = async (): Promise<ProductWithExtras[]> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      return [...mockProducts];
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch products');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProduct = async (id: string): Promise<ProductWithExtras | null> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // If collection ID is provided, filter products
-      if (collectionId) {
-        return mockProducts.filter(p => p.collection_id === collectionId);
+      const product = mockProducts.find(p => p.id === id);
+      return product || null;
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch product');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createProduct = async (product: Omit<ProductWithExtras, 'id' | 'created_at'>): Promise<ProductWithExtras> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const newProduct: ProductWithExtras = {
+        id: uuidv4(),
+        ...product,
+        created_at: new Date().toISOString(),
+        status: product.status || 'active',
+        stock: product.stock || 0
+      };
+      
+      mockProducts.push(newProduct);
+      
+      // Invalidate products query cache
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      
+      return newProduct;
+    } catch (err: any) {
+      setError(err.message || 'Failed to create product');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateProduct = async (product: ProductWithExtras): Promise<ProductWithExtras> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const index = mockProducts.findIndex(p => p.id === product.id);
+      if (index === -1) {
+        throw new Error('Product not found');
       }
       
-      // Return all products
-      return mockProducts;
-    },
-  });
-
-  const createProduct = useMutation({
-    mutationFn: async (newProduct: Omit<Product, 'id' | 'created_at'>) => {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 300));
+      mockProducts[index] = { ...mockProducts[index], ...product };
       
-      const product = {
-        id: uuidv4(),
-        created_at: new Date().toISOString(),
-        ...newProduct
-      };
-      
-      mockProducts = [...mockProducts, product];
-      
-      // Save to localStorage
-      saveProductsToStorage(mockProducts);
-      
-      return product;
-    },
-    onSuccess: () => {
+      // Invalidate products query cache
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Product added successfully');
-    },
-    onError: (error) => {
-      toast.error('Failed to add product');
-      console.error('Error adding product:', error);
-    },
-  });
-
-  const updateProduct = useMutation({
-    mutationFn: async (updates: Partial<Product> & { id: string }) => {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const index = mockProducts.findIndex(p => p.id === updates.id);
-      if (index === -1) throw new Error('Product not found');
-      
-      const updatedProducts = [...mockProducts];
-      updatedProducts[index] = {
-        ...updatedProducts[index],
-        ...updates
-      };
-      
-      mockProducts = updatedProducts;
-      
-      // Save to localStorage
-      saveProductsToStorage(mockProducts);
       
       return mockProducts[index];
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Product updated successfully');
-    },
-    onError: (error) => {
-      toast.error('Failed to update product');
-      console.error('Error updating product:', error);
-    },
-  });
+    } catch (err: any) {
+      setError(err.message || 'Failed to update product');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const deleteProduct = useMutation({
-    mutationFn: async (id: string) => {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 300));
+  const deleteProduct = async (id: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       const index = mockProducts.findIndex(p => p.id === id);
-      if (index === -1) throw new Error('Product not found');
+      if (index === -1) {
+        throw new Error('Product not found');
+      }
       
-      mockProducts = mockProducts.filter(p => p.id !== id);
+      mockProducts.splice(index, 1);
       
-      // Save to localStorage
-      saveProductsToStorage(mockProducts);
+      // Invalidate products query cache
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete product');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateStock = async (update: { productId: string; quantity: number; type: 'add' | 'remove' }): Promise<ProductWithExtras> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const product = mockProducts.find(p => p.id === update.productId);
+      if (!product) {
+        throw new Error('Product not found');
+      }
+      
+      let newStock = 0;
+      if (update.type === 'add') {
+        newStock = (product.stock || 0) + update.quantity;
+      } else {
+        newStock = Math.max(0, (product.stock || 0) - update.quantity);
+      }
+      
+      const updatedProduct = await updateProduct({
+        ...product,
+        stock: newStock
+      });
+      
+      return updatedProduct;
+    } catch (err: any) {
+      setError(err.message || 'Failed to update stock');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProductsByCollection = async (collectionId: string): Promise<ProductWithExtras[]> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (!collectionId) {
+        return [...mockProducts];
+      }
+      
+      return mockProducts.filter(p => p.collection_id === collectionId);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch products by collection');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchProducts = async (query: string): Promise<ProductWithExtras[]> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      if (!query) {
+        return [...mockProducts];
+      }
+      
+      const lowerQuery = query.toLowerCase();
+      return mockProducts.filter(
+        p => p.name.toLowerCase().includes(lowerQuery) || 
+             p.hsn_code.toLowerCase().includes(lowerQuery)
+      );
+    } catch (err: any) {
+      setError(err.message || 'Failed to search products');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteProductsByCollection = async (collectionId: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      mockProducts = mockProducts.filter(p => p.collection_id !== collectionId);
+      
+      // Invalidate products query cache
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete products by collection');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hookUpdateProductInventory = async (updates: Array<{ productId: string; quantity: number }>): Promise<{ success: boolean; message?: string }> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Process each update
+      for (const update of updates) {
+        await updateStock({
+          productId: update.productId,
+          quantity: update.quantity,
+          type: 'remove' // Always remove stock when selling products
+        });
+      }
       
       return { success: true };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Product deleted successfully');
-    },
-    onError: (error) => {
-      toast.error('Failed to delete product');
-      console.error('Error deleting product:', error);
-    },
-  });
-
-  // Delete all products in a collection
-  const deleteProductsByCollection = async (collectionId: string) => {
-    mockProducts = mockProducts.filter(p => p.collection_id !== collectionId);
-    saveProductsToStorage(mockProducts);
-    queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (err: any) {
+      setError(err.message || 'Failed to update product inventory');
+      return { success: false, message: err.message || 'Failed to update product inventory' };
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {
-    products,
-    isLoading,
-    createProduct: createProduct.mutate,
-    updateProduct: updateProduct.mutate,
-    deleteProduct: deleteProduct.mutate,
+    loading,
+    error,
+    fetchProducts,
+    fetchProduct,
+    createProduct,
+    updateProduct,
+    deleteProduct,
+    updateStock,
+    updateProductInventory: hookUpdateProductInventory,
+    fetchProductsByCollection,
+    searchProducts,
     deleteProductsByCollection
   };
-} 
+}; 

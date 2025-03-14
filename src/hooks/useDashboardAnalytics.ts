@@ -7,8 +7,9 @@ import { useStylists } from './useStylists'
 import { Order } from './usePOS'
 import { io, Socket } from 'socket.io-client'
 import { format, subDays, isToday, isThisWeek, isThisMonth, parseISO, isSameDay } from 'date-fns'
+import { supabase } from '../supabaseClient'
 
-// Analytics data types
+// Types and interfaces
 export interface DailySales {
   date: string;
   sales: number;
@@ -70,7 +71,11 @@ export function useDashboardAnalytics() {
   const { services, isLoading: loadingServices } = useServices();
   const { stylists, isLoading: loadingStylists } = useStylists();
   
-  // Default dashboard settings
+  const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  
+  // Default settings
   const [settings, setSettings] = useState<DashboardSettings>({
     visibleMetrics: {
       dailySales: true,
@@ -84,239 +89,127 @@ export function useDashboardAnalytics() {
     chartTypes: {
       salesTrend: 'line',
     },
-    refreshInterval: 30000, // 30 seconds
+    refreshInterval: 1000 * 60 * 5, // 5 minutes
   });
-  
-  // Socket for real-time updates
-  const [socket, setSocket] = useState<Socket | null>(null);
-  
-  // Initialize socket connection
+
+  // Mock data for demo mode - defined INSIDE the hook
+  const MOCK_ANALYTICS_DATA: AnalyticsSummary = {
+    todaySales: 1250,
+    yesterdaySales: 980,
+    salesChangePercentage: 27.5,
+    todayAppointments: 15,
+    topServices: [
+      { serviceName: 'Haircut', revenue: 550, count: 10 },
+      { serviceName: 'Hair Color', revenue: 750, count: 5 },
+      { serviceName: 'Styling', revenue: 300, count: 6 }
+    ],
+    newCustomers: 4,
+    repeatCustomers: 11,
+    retentionRate: 78,
+    averageTicketPrice: 83.33,
+    previousAverageTicketPrice: 75.4,
+    averageTicketChangePercentage: 10.5,
+    staffUtilization: {
+      average: 65,
+      byStaff: [
+        { stylistId: '1', stylistName: 'Sarah', rate: 85 },
+        { stylistId: '2', stylistName: 'Mike', rate: 70 },
+        { stylistId: '3', stylistName: 'Jessica', rate: 60 },
+        { stylistId: '4', stylistName: 'John', rate: 45 }
+      ]
+    },
+    dailySalesTrend: Array(7).fill(0).map((_, i) => ({
+      date: new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      sales: Math.floor(Math.random() * 1000) + 500
+    })),
+    stylistRevenue: [
+      { stylistId: '1', stylistName: 'Sarah', revenue: 3200 },
+      { stylistId: '2', stylistName: 'Mike', revenue: 2800 },
+      { stylistId: '3', stylistName: 'Jessica', revenue: 2400 },
+      { stylistId: '4', stylistName: 'John', revenue: 2000 }
+    ]
+  };
+
+  // Function to generate analytics summary with mock data
+  const getAnalyticsSummary = (): AnalyticsSummary => {
+    // Just return mock data for demo purposes
+    return MOCK_ANALYTICS_DATA;
+  };
+
+  // Initialize and check for demo mode
   useEffect(() => {
-    // In a real implementation, you would connect to your backend socket server
-    // For now, we'll simulate real-time with local polling
+    // Check for demo auth
+    const demoAuth = localStorage.getItem('salon_demo_auth');
+    if (demoAuth) {
+      try {
+        const demoData = JSON.parse(demoAuth);
+        if (demoData.isAuthenticated) {
+          // Use mock data for demo mode
+          setAnalyticsSummary(MOCK_ANALYTICS_DATA);
+          setIsLoading(false);
+          return; // Skip the rest of initialization for demo mode
+        }
+      } catch (err) {
+        console.error('Error parsing demo auth:', err);
+      }
+    }
+
+    // Regular initialization logic for non-demo mode
+    // For now, just use mock data
+    setAnalyticsSummary(getAnalyticsSummary());
+    setIsLoading(false);
+    
     return () => {
+      // Cleanup logic
       if (socket) {
         socket.disconnect();
       }
     };
   }, []);
-  
-  // Process analytics data
-  const getAnalyticsSummary = (): AnalyticsSummary => {
-    if (!orders || !appointments || !services || !stylists) {
-      return {
-        todaySales: 0,
-        yesterdaySales: 0,
-        salesChangePercentage: 0,
-        todayAppointments: 0,
-        topServices: [],
-        newCustomers: 0,
-        repeatCustomers: 0,
-        retentionRate: 0,
-        averageTicketPrice: 0,
-        previousAverageTicketPrice: 0,
-        averageTicketChangePercentage: 0,
-        staffUtilization: { average: 0, byStaff: [] },
-        dailySalesTrend: [],
-        stylistRevenue: [],
-      };
-    }
-    
-    // Filter orders by complete status
-    const completedOrders = orders.filter(order => order.status === 'completed');
-    
-    // Today's sales
-    const today = new Date();
-    const yesterday = subDays(today, 1);
-    
-    const todayOrders = completedOrders.filter(order => 
-      isSameDay(parseISO(order.created_at), today)
-    );
-    
-    const yesterdayOrders = completedOrders.filter(order => 
-      isSameDay(parseISO(order.created_at), yesterday)
-    );
-    
-    const todaySales = todayOrders.reduce((sum, order) => sum + order.total, 0);
-    const yesterdaySales = yesterdayOrders.reduce((sum, order) => sum + order.total, 0);
-    
-    // Calculate sales change percentage
-    const salesChangePercentage = yesterdaySales === 0 
-      ? 100 
-      : ((todaySales - yesterdaySales) / yesterdaySales) * 100;
-    
-    // Today's appointments
-    const todayAppointments = appointments.filter((appointment: any) => 
-      isToday(parseISO(appointment.start_time))
-    ).length;
-    
-    // Top services by revenue
-    const serviceRevenueMap = new Map<string, ServiceSales>();
-    
-    completedOrders.forEach(order => {
-      order.services.forEach(service => {
-        if (serviceRevenueMap.has(service.service_id)) {
-          const current = serviceRevenueMap.get(service.service_id)!;
-          serviceRevenueMap.set(service.service_id, {
-            serviceName: service.service_name,
-            revenue: current.revenue + service.price,
-            count: current.count + 1,
-          });
-        } else {
-          serviceRevenueMap.set(service.service_id, {
-            serviceName: service.service_name,
-            revenue: service.price,
-            count: 1,
-          });
-        }
-      });
-    });
-    
-    const topServices = Array.from(serviceRevenueMap.values())
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-    
-    // Customer retention
-    const customerVisitMap = new Map<string, number>();
-    
-    completedOrders.forEach(order => {
-      const customer = order.client_name;
-      customerVisitMap.set(customer, (customerVisitMap.get(customer) || 0) + 1);
-    });
-    
-    const newCustomers = Array.from(customerVisitMap.values()).filter(count => count === 1).length;
-    const repeatCustomers = Array.from(customerVisitMap.values()).filter(count => count > 1).length;
-    const totalCustomers = newCustomers + repeatCustomers;
-    const retentionRate = totalCustomers === 0 ? 0 : (repeatCustomers / totalCustomers) * 100;
-    
-    // Average ticket price
-    const thisMonthOrders = completedOrders.filter(order => 
-      isThisMonth(parseISO(order.created_at))
-    );
-    
-    const lastMonthOrders = completedOrders.filter(order => {
-      const date = parseISO(order.created_at);
-      return !isThisMonth(date) && isThisMonth(subDays(date, 30));
-    });
-    
-    const averageTicketPrice = thisMonthOrders.length === 0 
-      ? 0 
-      : thisMonthOrders.reduce((sum, order) => sum + order.total, 0) / thisMonthOrders.length;
-    
-    const previousAverageTicketPrice = lastMonthOrders.length === 0 
-      ? 0 
-      : lastMonthOrders.reduce((sum, order) => sum + order.total, 0) / lastMonthOrders.length;
-    
-    const averageTicketChangePercentage = previousAverageTicketPrice === 0 
-      ? 0 
-      : ((averageTicketPrice - previousAverageTicketPrice) / previousAverageTicketPrice) * 100;
-    
-    // Staff utilization
-    const stylistAppointmentMap = new Map<string, number>();
-    stylists.forEach(stylist => {
-      stylistAppointmentMap.set(stylist.id, 0);
-    });
-    
-    // Count appointments for each stylist
-    appointments.forEach((appointment: any) => {
-      if (stylistAppointmentMap.has(appointment.stylist_id)) {
-        stylistAppointmentMap.set(
-          appointment.stylist_id, 
-          (stylistAppointmentMap.get(appointment.stylist_id) || 0) + 1
-        );
-      }
-    });
-    
-    // Calculate utilization rates (assuming 8-hour day, 30-minute slots = 16 possible appointments per day)
-    const SLOTS_PER_DAY = 16;
-    const staffUtilizationData = stylists.map(stylist => {
-      const appointmentCount = stylistAppointmentMap.get(stylist.id) || 0;
-      const rate = (appointmentCount / SLOTS_PER_DAY) * 100;
-      return {
-        stylistId: stylist.id,
-        stylistName: stylist.name,
-        rate: Math.min(rate, 100), // Cap at 100%
-      };
-    });
-    
-    const averageUtilization = staffUtilizationData.reduce((sum, item) => sum + item.rate, 0) / stylists.length;
-    
-    // Calculate revenue per stylist
-    const stylistRevenueMap = new Map<string, number>();
-    stylists.forEach(stylist => {
-      stylistRevenueMap.set(stylist.id, 0);
-    });
-    
-    // Sum revenue for each stylist from completed orders
-    completedOrders.forEach(order => {
-      if (stylistRevenueMap.has(order.stylist_id)) {
-        stylistRevenueMap.set(
-          order.stylist_id,
-          (stylistRevenueMap.get(order.stylist_id) || 0) + order.total
-        );
-      }
-    });
-    
-    // Format stylist revenue data
-    const stylistRevenue = stylists
-      .map(stylist => ({
-        stylistId: stylist.id,
-        stylistName: stylist.name,
-        revenue: stylistRevenueMap.get(stylist.id) || 0,
-      }))
-      .sort((a, b) => b.revenue - a.revenue); // Sort by revenue (highest first)
-    
-    // Daily sales trend for last 7 days
-    const last7Days = Array.from({ length: 7 }).map((_, i) => subDays(today, 6 - i));
-    
-    const dailySalesTrend = last7Days.map(date => {
-      const dayOrders = completedOrders.filter(order => isSameDay(parseISO(order.created_at), date));
-      const daySales = dayOrders.reduce((sum, order) => sum + order.total, 0);
-      return {
-        date: format(date, 'MM/dd'),
-        sales: daySales,
-      };
-    });
-    
-    return {
-      todaySales,
-      yesterdaySales,
-      salesChangePercentage,
-      todayAppointments,
-      topServices,
-      newCustomers,
-      repeatCustomers,
-      retentionRate,
-      averageTicketPrice,
-      previousAverageTicketPrice,
-      averageTicketChangePercentage,
-      staffUtilization: {
-        average: averageUtilization,
-        byStaff: staffUtilizationData,
-      },
-      dailySalesTrend,
-      stylistRevenue,
-    };
-  };
-  
-  // Use query for analytics data
-  const { data: analyticsSummary, refetch, isLoading: loadingAnalytics } = useQuery({
-    queryKey: ['dashboard-analytics'],
-    queryFn: getAnalyticsSummary,
-    enabled: !loadingOrders && !loadingAppointments && !loadingServices && !loadingStylists,
-    refetchInterval: settings.refreshInterval,
-  });
-  
-  // Update dashboard settings
+
   const updateSettings = (newSettings: Partial<DashboardSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
   };
-  
+
+  const refetchAnalytics = async () => {
+    setIsLoading(true);
+    
+    // Check if in demo mode
+    const demoAuth = localStorage.getItem('salon_demo_auth');
+    if (demoAuth) {
+      try {
+        const demoData = JSON.parse(demoAuth);
+        if (demoData.isAuthenticated) {
+          // Use mock data with slight variations
+          const mockData = {...MOCK_ANALYTICS_DATA};
+          
+          // Update random values
+          mockData.todaySales = Math.floor(Math.random() * 1000) + 800;
+          mockData.todayAppointments = Math.floor(Math.random() * 10) + 10;
+          mockData.dailySalesTrend = MOCK_ANALYTICS_DATA.dailySalesTrend.map(day => ({
+            ...day,
+            sales: Math.floor(Math.random() * 500) + day.sales - 250
+          }));
+          
+          setAnalyticsSummary(mockData);
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Error parsing demo auth:', err);
+      }
+    }
+    
+    // For now, use the same mock data
+    setAnalyticsSummary(getAnalyticsSummary());
+    setIsLoading(false);
+  };
+
   return {
     analyticsSummary,
-    isLoading: loadingOrders || loadingAppointments || loadingServices || loadingStylists || loadingAnalytics,
-    refetchAnalytics: refetch,
+    isLoading,
+    refetchAnalytics,
     settings,
-    updateSettings,
+    updateSettings
   };
 } 

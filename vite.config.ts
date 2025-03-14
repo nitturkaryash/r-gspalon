@@ -139,5 +139,17 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src')
     }
-  }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/setupTests.ts'],
+    coverage: {
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/setupTests.ts',
+      ],
+    },
+  },
 })

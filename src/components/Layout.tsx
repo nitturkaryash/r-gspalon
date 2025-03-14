@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, Outlet } from 'react-router-dom'
 import {
   Box,
   Drawer,
@@ -31,8 +31,9 @@ import {
   Storefront,
   Category,
   CardMembership,
-  Inventory,
   Logout,
+  Inventory,
+  Settings,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
@@ -41,10 +42,6 @@ import { alpha } from '@mui/material/styles'
 import { useAuth } from '../hooks/useAuth'
 
 const drawerWidth = 240
-
-interface LayoutProps {
-  children: React.ReactNode
-}
 
 interface MenuLink {
   text: string
@@ -60,8 +57,9 @@ const menuLinks: MenuLink[] = [
   { text: 'Stylists', path: '/stylists', icon: <Person /> },
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
-  { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
   { text: 'Members', path: '/members', icon: <CardMembership /> },
+  { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
+  { text: 'Inventory Setup', path: '/inventory-setup', icon: <Settings /> },
 ]
 
 const ListItemStyled = styled(ListItem)(({ theme }) => ({
@@ -85,7 +83,7 @@ const menuItemVariants = {
   },
 }
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout() {
   const theme = useTheme()
   const location = useLocation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -289,7 +287,7 @@ export default function Layout({ children }: LayoutProps) {
           backgroundColor: 'background.default',
         }}
       >
-        {children}
+        <Outlet />
       </Box>
     </Box>
   )
