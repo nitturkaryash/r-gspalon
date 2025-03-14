@@ -11,6 +11,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import { CircularProgress, Box } from '@mui/material';
 import { AuthProvider } from './hooks/useAuth'; // Using the hook-based auth from main
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Eagerly loaded pages
 import Dashboard from './pages/Dashboard';
@@ -26,6 +27,7 @@ const Orders = lazy(() => import('./pages/Orders'));
 const POS = lazy(() => import('./pages/POS'));
 const CollectionDetail = lazy(() => import('./pages/CollectionDetail'));
 const Inventory = lazy(() => import('./pages/Inventory'));
+const InventorySetup = lazy(() => import('./pages/InventorySetup'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -40,34 +42,43 @@ function App() {
       <CssBaseline />
       <ToastContainer position="top-right" theme="dark" />
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <Suspense fallback={<PageLoader />}>
-                    <Outlet />
-                  </Suspense>
-                </Layout>
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="appointments" element={<Appointments />} />
-            <Route path="clients" element={<Clients />} />
-            <Route path="services" element={<ServiceCollections />} />
-            <Route path="services/:id" element={<ServiceCollectionDetail />} />
-            <Route path="stylists" element={<Stylists />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="pos" element={<POS />} />
-            <Route path="members" element={<Members />} />
-            <Route path="inventory" element={<Inventory />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+        <Suspense fallback={
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <CircularProgress />
+          </Box>
+        }>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Suspense fallback={<PageLoader />}>
+                        <Outlet />
+                      </Suspense>
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="appointments" element={<Appointments />} />
+                <Route path="clients" element={<Clients />} />
+                <Route path="services" element={<ServiceCollections />} />
+                <Route path="services/:id" element={<ServiceCollectionDetail />} />
+                <Route path="stylists" element={<Stylists />} />
+                <Route path="orders" element={<Orders />} />
+                <Route path="pos" element={<POS />} />
+                <Route path="members" element={<Members />} />
+                <Route path="inventory" element={<Inventory />} />
+                <Route path="inventory-setup" element={<InventorySetup />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </ErrorBoundary>
+        </Suspense>
       </AuthProvider>
       
       {/* Only renders in development */}

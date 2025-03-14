@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Tabs, Tab, Typography, Button, CircularProgress } from '@mui/material';
+import { Box, Tabs, Tab, Typography, Button, CircularProgress, Alert } from '@mui/material';
 import { Container, Paper } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { GetApp as DownloadIcon } from '@mui/icons-material';
@@ -8,6 +8,7 @@ import PurchaseTab from '../components/inventory/PurchaseTab';
 import SalesTab from '../components/inventory/SalesTab';
 import ConsumptionTab from '../components/inventory/ConsumptionTab';
 import { downloadCsv } from '../utils/csvExporter';
+import { Link } from 'react-router-dom';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -60,11 +61,29 @@ const Inventory: React.FC = () => {
   };
 
   const handleExportData = async () => {
-    const data = await exportInventoryData();
-    downloadCsv(data);
+    try {
+      const data = await exportInventoryData();
+      downloadCsv(data);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      alert('Failed to export data. Please try again.');
+    }
   };
 
   const isLoading = purchasesQuery.isLoading || salesQuery.isLoading || consumptionQuery.isLoading || balanceStockQuery.isLoading;
+  const error = purchasesQuery.error || salesQuery.error || consumptionQuery.error || balanceStockQuery.error;
+  
+  // Show a loading state while data is being fetched
+  if (isLoading && !error) {
+    return (
+      <Container maxWidth="lg">
+        <Box sx={{ my: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
+          <CircularProgress size={40} sx={{ mb: 3 }} />
+          <Typography variant="h6">Loading inventory data...</Typography>
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="lg">
@@ -78,11 +97,25 @@ const Inventory: React.FC = () => {
             color="primary"
             startIcon={isExporting ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
             onClick={handleExportData}
-            disabled={isExporting || isLoading}
+            disabled={isExporting || isLoading || !!error}
           >
             Export CSV
           </Button>
         </Box>
+
+        {error && error.message.includes('does not exist') && (
+          <Alert 
+            severity="warning" 
+            sx={{ mb: 3 }}
+            action={
+              <Button color="inherit" size="small" component={Link} to="/inventory-setup">
+                Setup Tables
+              </Button>
+            }
+          >
+            Database tables not found. Please run the setup utility to create the required tables.
+          </Alert>
+        )}
 
         <StyledPaper>
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>

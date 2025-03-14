@@ -80,7 +80,10 @@ export const useInventory = () => {
         console.error('Error fetching purchases:', error);
         throw error;
       }
-    }
+    },
+    retry: 1,
+    refetchOnWindowFocus: false,
+    suspense: false, // Disable suspense mode
   });
 
   // Query to fetch sales
@@ -100,7 +103,10 @@ export const useInventory = () => {
         console.error('Error fetching sales:', error);
         throw error;
       }
-    }
+    },
+    retry: 1,
+    refetchOnWindowFocus: false,
+    suspense: false, // Disable suspense mode
   });
 
   // Query to fetch consumption
@@ -120,7 +126,10 @@ export const useInventory = () => {
         console.error('Error fetching consumption:', error);
         throw error;
       }
-    }
+    },
+    retry: 1,
+    refetchOnWindowFocus: false,
+    suspense: false, // Disable suspense mode
   });
 
   // Query to fetch balance stock
@@ -139,7 +148,10 @@ export const useInventory = () => {
         console.error('Error fetching balance stock:', error);
         throw error;
       }
-    }
+    },
+    retry: 1,
+    refetchOnWindowFocus: false,
+    suspense: false, // Disable suspense mode
   });
 
   // Mutation to create a new purchase

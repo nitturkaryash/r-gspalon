@@ -33,6 +33,7 @@ import {
   CardMembership,
   Logout,
   Inventory,
+  Settings,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
@@ -58,6 +59,7 @@ const menuLinks: MenuLink[] = [
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
   { text: 'Members', path: '/members', icon: <CardMembership /> },
   { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
+  { text: 'Inventory Setup', path: '/inventory-setup', icon: <Settings /> },
 ]
 
 const ListItemStyled = styled(ListItem)(({ theme }) => ({

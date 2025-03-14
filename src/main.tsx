@@ -26,6 +26,10 @@ import { AuthProvider } from './lib/auth.tsx'
 import App from './App.tsx'
 import './index.css'
 import 'react-toastify/dist/ReactToastify.css'
+import ErrorBoundary from './components/ErrorBoundary'
+
+// Note: We're now using the queryClient imported from './lib/query-client'
+// which has been updated with our desired configuration
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -34,23 +38,25 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <QueryClientProvider client={queryClient}>
           <ThemeProvider theme={theme}>
             <CssBaseline />
-            <AuthProvider>
-              <BrowserRouter>
-                <App />
-                <ToastContainer
-                  position="bottom-right"
-                  autoClose={5000}
-                  hideProgressBar={false}
-                  newestOnTop
-                  closeOnClick
-                  rtl={false}
-                  pauseOnFocusLoss
-                  draggable
-                  pauseOnHover
-                  theme="light"
-                />
-              </BrowserRouter>
-            </AuthProvider>
+            <ErrorBoundary>
+              <AuthProvider>
+                <BrowserRouter>
+                  <App />
+                  <ToastContainer
+                    position="bottom-right"
+                    autoClose={5000}
+                    hideProgressBar={false}
+                    newestOnTop
+                    closeOnClick
+                    rtl={false}
+                    pauseOnFocusLoss
+                    draggable
+                    pauseOnHover
+                    theme="light"
+                  />
+                </BrowserRouter>
+              </AuthProvider>
+            </ErrorBoundary>
           </ThemeProvider>
         </QueryClientProvider>
       </MotionConfig>
