@@ -34,12 +34,13 @@ import {
   Logout,
   Inventory,
   Settings,
+  Spa,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
 import { styled } from '@mui/material/styles'
 import { alpha } from '@mui/material/styles'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from './AuthProvider'
 
 const drawerWidth = 240
 
@@ -54,6 +55,8 @@ const menuLinks: MenuLink[] = [
   { text: 'Appointments', path: '/appointments', icon: <CalendarMonth /> },
   { text: 'Clients', path: '/clients', icon: <People /> },
   { text: 'Services', path: '/services', icon: <Category /> },
+  { text: 'Products', path: '/products', icon: <Spa /> },
+  { text: 'Product Setup', path: '/products-setup', icon: <Settings /> },
   { text: 'Stylists', path: '/stylists', icon: <Person /> },
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
@@ -88,14 +91,14 @@ export default function Layout() {
   const location = useLocation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { user, logout } = useAuth()
+  const { user, signOut } = useAuth()
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
   }
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await signOut()
   }
 
   const userSection = (
