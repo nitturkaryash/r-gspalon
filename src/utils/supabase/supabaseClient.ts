@@ -18,4 +18,20 @@ export const TABLES = {
 export const handleSupabaseError = (error: any): Error => {
   console.error('Supabase error:', error);
   return new Error(error.message || 'An error occurred with the database operation');
+};
+
+// Helper function to check if user is authenticated
+export const checkAuthentication = async () => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  
+  if (error) {
+    console.error('Authentication error:', error);
+    throw new Error(`Authentication error: ${error.message}`);
+  }
+  
+  if (!user) {
+    throw new Error('User is not authenticated. Please log in again.');
+  }
+  
+  return user;
 }; 
