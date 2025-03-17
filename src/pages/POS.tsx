@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Box,
@@ -205,6 +205,11 @@ export default function POS() {
   // Add a state for inventory product category
   const [showInventoryProducts, setShowInventoryProducts] = useState(true);
   
+  // Add refs to track previous values
+  const prevPendingAmountRef = useRef<number>(0);
+  const prevActiveStepRef = useRef<number>(0);
+  const prevTotalRef = useRef<number>(0);
+  
   // Get services for the selected collection or all services if no collection is selected
   const getServicesForCollection = () => {
     if (!selectedServiceCollection) {
@@ -341,7 +346,10 @@ export default function POS() {
       }
       
       // Only update state if the value is different by more than a small threshold
-      if (Math.abs(pendingAmount - remaining) > 0.01) {
+      // AND different from the previous value we tracked
+      if (Math.abs(pendingAmount - remaining) > 0.01 && 
+          Math.abs(prevPendingAmountRef.current - remaining) > 0.01) {
+        prevPendingAmountRef.current = remaining;
         setPendingAmount(remaining);
       }
     }
@@ -527,14 +535,21 @@ export default function POS() {
   
   // Reset split payment state when moving between steps
   useEffect(() => {
+    const activeStepChanged = prevActiveStepRef.current !== activeStep;
+    const totalChanged = Math.abs(prevTotalRef.current - total) > 0.01;
+    
+    // Update refs
+    prevActiveStepRef.current = activeStep;
+    prevTotalRef.current = total;
+    
     // Only reset if we're not on the payment step or just entered the payment step
     if (activeStep !== 2) {
       // Avoid unnecessary state updates by checking current values
       if (isSplitPayment) setIsSplitPayment(false);
       if (splitPayments.length > 0) setSplitPayments([]);
       if (newPaymentAmount !== 0) setNewPaymentAmount(0);
-    } else if (activeStep === 2 && Math.abs(pendingAmount - total) > 0.01) {
-      // When entering payment step, set pending amount to total, but only if significantly different
+    } else if (activeStep === 2 && activeStepChanged && Math.abs(pendingAmount - total) > 0.01) {
+      // When entering payment step (and only when the step changes), set pending amount to total
       // Use a small threshold to avoid floating point comparison issues
       setPendingAmount(total);
     }
