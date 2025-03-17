@@ -157,51 +157,103 @@ interface POSPaymentState {
   lastUpdated: string; // Track what was last updated to prevent loops
 }
 
-// Define reducer
+// Modify the payment reducer to be more stable
 const paymentReducer = (state: POSPaymentState, action: POSAction): POSPaymentState => {
   switch (action.type) {
     case 'SET_SPLIT_PAYMENT':
-      if (state.isSplitPayment === action.value) return state;
-      return { ...state, isSplitPayment: action.value, lastUpdated: 'isSplitPayment' };
+      if (state.isSplitPayment === action.value) {
+        return state; // No change needed
+      }
+      return {
+        ...state,
+        isSplitPayment: action.value,
+        lastUpdated: 'splitPayment'
+      };
       
     case 'SET_SPLIT_PAYMENTS':
-      return { ...state, splitPayments: action.payments, lastUpdated: 'splitPayments' };
+      // Deep comparison to avoid unnecessary updates
+      const currentPaymentsJSON = JSON.stringify(state.splitPayments);
+      const newPaymentsJSON = JSON.stringify(action.payments);
+      
+      if (currentPaymentsJSON === newPaymentsJSON) {
+        return state; // No change needed
+      }
+      
+      return {
+        ...state,
+        splitPayments: action.payments,
+        lastUpdated: 'splitPayments'
+      };
       
     case 'SET_PENDING_AMOUNT':
-      if (Math.abs(state.pendingAmount - action.amount) < 0.01) return state;
-      return { ...state, pendingAmount: action.amount, lastUpdated: 'pendingAmount' };
+      // Use a threshold for floating point comparison
+      if (Math.abs(state.pendingAmount - action.amount) < 0.01) {
+        return state; // No change needed
+      }
+      
+      return {
+        ...state,
+        pendingAmount: action.amount,
+        lastUpdated: 'pendingAmount'
+      };
       
     case 'SET_NEW_PAYMENT_AMOUNT':
-      return { ...state, newPaymentAmount: action.amount, lastUpdated: 'newPaymentAmount' };
+      // Use a threshold for floating point comparison
+      if (Math.abs(state.newPaymentAmount - action.amount) < 0.01) {
+        return state; // No change needed
+      }
+      
+      return {
+        ...state,
+        newPaymentAmount: action.amount,
+        lastUpdated: 'newPaymentAmount'
+      };
       
     case 'SET_NEW_PAYMENT_METHOD':
-      return { ...state, newPaymentMethod: action.method, lastUpdated: 'newPaymentMethod' };
+      if (state.newPaymentMethod === action.method) {
+        return state; // No change needed
+      }
+      
+      return {
+        ...state,
+        newPaymentMethod: action.method,
+        lastUpdated: 'newPaymentMethod'
+      };
       
     case 'RESET_PAYMENT_STATE':
-      if (action.activeStep !== 2) {
-        return {
-          ...state,
-          isSplitPayment: false,
-          splitPayments: [],
-          newPaymentAmount: 0,
-          lastUpdated: 'reset'
-        };
+      // Only reset if not already in initial state
+      if (!state.isSplitPayment && state.splitPayments.length === 0 && state.newPaymentAmount === 0) {
+        return state; // Already in reset state
       }
-      return state;
+      
+      return {
+        ...state,
+        isSplitPayment: false,
+        splitPayments: [],
+        newPaymentAmount: 0,
+        lastUpdated: 'reset'
+      };
       
     case 'ENTER_PAYMENT_STEP':
-      if (Math.abs(state.pendingAmount - action.total) > 0.01) {
-        return {
-          ...state,
-          pendingAmount: action.total,
-          lastUpdated: 'enterPayment'
-        };
+      // Only update pending amount if it's different
+      if (Math.abs(state.pendingAmount - action.total) < 0.01) {
+        return state; // No change needed
       }
-      return state;
+      
+      return {
+        ...state,
+        pendingAmount: action.total,
+        lastUpdated: 'enterPayment'
+      };
       
     default:
       return state;
   }
+};
+
+// Add a utility function for safer floating point comparison
+const isApproximatelyEqual = (a: number, b: number, epsilon = 0.01): boolean => {
+  return Math.abs(a - b) < epsilon;
 };
 
 export default function POS() {
@@ -595,55 +647,49 @@ export default function POS() {
     setActiveStep((prevStep) => prevStep - 1);
   }, []);
 
-  // Update handleAddSplitPayment to use the new function
+  // Completely rewrite the handleAddSplitPayment function to prevent unwanted re-renders
   const handleAddSplitPayment = useCallback(() => {
-    // Validation for maximum 2 payment methods
+    // Basic validation
     if (splitPayments.length >= 2) {
       setSnackbarMessage('Maximum 2 payment methods allowed');
       setSnackbarOpen(true);
       return;
     }
     
-    // Validate the required fields
     if (!newPaymentMethod) {
       setSnackbarMessage('Please select a payment method');
       setSnackbarOpen(true);
       return;
     }
     
-    // Fix validation to check if amount is between 0 and the remaining amount (inclusive)
     if (newPaymentAmount <= 0 || newPaymentAmount > pendingAmount) {
       setSnackbarMessage('Invalid payment amount');
       setSnackbarOpen(true);
       return;
     }
     
-    // Create new payment object
-    const newPayment: PaymentDetail = {
-      id: (Math.random() * 1000000).toString(), // Temporary ID - will be replaced on server
+    // Create new payment with stable ID generation
+    const paymentId = `payment_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const newPayment = {
+      id: paymentId,
       amount: newPaymentAmount,
       payment_method: newPaymentMethod,
       payment_date: new Date().toISOString(),
     };
     
-    // Batch state updates to prevent multiple renders
+    // Batch update - create a new array and dispatch once
     const updatedPayments = [...splitPayments, newPayment];
     
-    // Update state through reducer with a single dispatch if possible
+    // Single dispatch for split payments
     dispatch({ 
       type: 'SET_SPLIT_PAYMENTS', 
       payments: updatedPayments 
     });
     
-    // Only reset payment method if it's not already 'cash'
-    if (newPaymentMethod !== 'cash') {
-      dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: 'cash' });
-    }
-    
-    // Only reset payment amount if it's not already 0
-    if (newPaymentAmount !== 0) {
-      dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: 0 });
-    }
+    // Reset input fields in a separate batch - no conditional logic here
+    // as the reducer will handle not updating when values are the same
+    dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: 'cash' });
+    dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: 0 });
   }, [splitPayments, newPaymentMethod, newPaymentAmount, pendingAmount, setSnackbarMessage, setSnackbarOpen]);
 
   // Remove a payment from the split payments list
@@ -659,42 +705,48 @@ export default function POS() {
     return splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
   };
   
-  // Reset split payment state when moving between steps
+  // Add a more stable useEffect to handle split payments and pending amount
   useEffect(() => {
-    // Store previous values for comparison
-    const prevActiveStep = prevActiveStepRef.current;
-    prevActiveStepRef.current = activeStep;
+    // Only run this when we're in payment step
+    if (activeStep !== 2) return;
     
-    // Only reset payment state when step changes
-    if (prevActiveStep !== activeStep) {
-      // Reset payment state when step changes and not entering payment step
-      if (activeStep !== 2) {
-        // Only dispatch if there's something to reset
-        if (isSplitPayment || splitPayments.length > 0 || newPaymentAmount > 0) {
-          dispatch({ type: 'RESET_PAYMENT_STATE', activeStep });
-        }
-      } else if (activeStep === 2) {
-        // Only update pending amount when entering payment step and if it's different
-        if (Math.abs(pendingAmount - total) > 0.01) {
-          dispatch({ type: 'ENTER_PAYMENT_STEP', total });
-        }
-      }
-    }
-  }, [activeStep, total, isSplitPayment, splitPayments.length, newPaymentAmount, pendingAmount]);
-  
-  // Add a useEffect to update pending amount when split payments change
-  useEffect(() => {
-    // Only run this effect when in payment step and split payment is enabled
-    if (activeStep === 2 && isSplitPayment) {
+    // Only update pending amount if isSplitPayment is true
+    if (isSplitPayment) {
       const totalPaid = calculateTotalPaid(splitPayments);
       const remaining = Math.max(0, total - totalPaid);
       
-      // Only update if the pending amount is significantly different
+      // We're going to manually update pendingAmount, avoiding the dispatch if possible
       if (Math.abs(pendingAmount - remaining) > 0.01) {
         dispatch({ type: 'SET_PENDING_AMOUNT', amount: remaining });
       }
+    } else {
+      // When split payment is disabled, pending amount should be the total
+      if (Math.abs(pendingAmount - total) > 0.01) {
+        dispatch({ type: 'SET_PENDING_AMOUNT', amount: total });
+      }
     }
   }, [activeStep, isSplitPayment, splitPayments, total, pendingAmount, calculateTotalPaid]);
+  
+  // Simplify the handlePaymentMethodChange function
+  const handlePaymentMethodChange = useCallback((event: SelectChangeEvent<PaymentMethod>) => {
+    const selectedMethod = event.target.value as PaymentMethod;
+    dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: selectedMethod });
+  }, []);
+  
+  // Simplify the payment state reset logic in useEffect
+  useEffect(() => {
+    const prevStep = prevActiveStepRef.current;
+    prevActiveStepRef.current = activeStep;
+    
+    // Only reset when leaving the payment step
+    if (prevStep === 2 && activeStep !== 2) {
+      dispatch({ type: 'RESET_PAYMENT_STATE', activeStep });
+    }
+    // Only initialize payment when entering the payment step
+    else if (prevStep !== 2 && activeStep === 2) {
+      dispatch({ type: 'ENTER_PAYMENT_STEP', total });
+    }
+  }, [activeStep, total]);
   
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
@@ -1154,16 +1206,6 @@ export default function POS() {
     );
   };
 
-  const handlePaymentMethodChange = (event: SelectChangeEvent<PaymentMethod>) => {
-    const selectedMethod = event.target.value as PaymentMethod;
-    dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: selectedMethod });
-    
-    // If this is the second payment method, set the amount to the pending amount
-    if (splitPayments.length === 1) {
-      dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: pendingAmount });
-    }
-  };
-
   // Add a helper function to get stylists from localStorage if needed
   const getStylists = () => {
     // First try to get from the hook
@@ -1301,6 +1343,353 @@ export default function POS() {
     );
   };
 
+  // Handle toggling split payment option
+  const handleToggleSplitPayment = useCallback(() => {
+    // When enabling split payment, set pending amount to total
+    // When disabling, reset split payments
+    dispatch({ type: 'SET_SPLIT_PAYMENT', value: !isSplitPayment });
+    
+    if (!isSplitPayment) {
+      // Enabling split payment, set pending to total
+      if (!isApproximatelyEqual(pendingAmount, total)) {
+        dispatch({ type: 'SET_PENDING_AMOUNT', amount: total });
+      }
+    } else {
+      // Disabling split payment, clear split payments
+      if (splitPayments.length > 0) {
+        dispatch({ type: 'SET_SPLIT_PAYMENTS', payments: [] });
+      }
+    }
+  }, [isSplitPayment, pendingAmount, total, splitPayments.length]);
+
+  // Simplify and stabilize the newPaymentAmount change handler
+  const handleNewPaymentAmountChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const newAmount = parseFloat(event.target.value);
+    if (!isNaN(newAmount) && newAmount >= 0) {
+      dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: newAmount });
+    }
+  }, []);
+  
+  // Render the payment method section with stable handlers and memoization
+  const renderPaymentMethodSection = useMemo(() => {
+    return (
+      <Box>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={isSplitPayment}
+              onChange={handleToggleSplitPayment}
+              name="splitPayment"
+              color="primary"
+            />
+          }
+          label="Split Payment"
+          sx={{ mb: 2 }}
+        />
+        
+        {isSplitPayment ? (
+          // Split payment UI
+          <Box>
+            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                Split Payment Details
+              </Typography>
+              
+              {/* Show GST information at the top */}
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  GST (18%) is applied to non-cash payment methods. When mixing cash with other payment methods, 
+                  GST will be applied to the complete amount. Maximum 2 payment methods allowed.
+                </Typography>
+              </Alert>
+              
+              <TableContainer sx={{ maxHeight: 200, mb: 2 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Method</TableCell>
+                      <TableCell>GST Applicable</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {splitPayments.map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                        <TableCell>{PAYMENT_METHOD_LABELS[payment.payment_method]}</TableCell>
+                        <TableCell>
+                          {payment.payment_method === 'cash' && 
+                            !splitPayments.some(p => p.payment_method !== 'cash') ? (
+                            <Typography color="success.main">No</Typography>
+                          ) : (
+                            <Typography>Yes</Typography>
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleRemoveSplitPayment(payment.id)}
+                            aria-label="delete payment"
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {splitPayments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} align="center">
+                          <Typography variant="body2" color="text.secondary">
+                            No payments added yet
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              
+              {/* Only show the payment input fields if less than 2 payment methods are added */}
+              {splitPayments.length < 2 ? (
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                  <TextField
+                    label="Amount"
+                    type="number"
+                    value={newPaymentAmount}
+                    onChange={handleNewPaymentAmountChange}
+                    sx={{ minWidth: 120 }}
+                    InputProps={{
+                      inputProps: { min: 1, max: pendingAmount },
+                      startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+                    }}
+                    helperText={`Max: ${formatCurrency(pendingAmount)}`}
+                  />
+                  
+                  <FormControl sx={{ minWidth: 150 }}>
+                    <InputLabel>Payment Method</InputLabel>
+                    <Select
+                      value={newPaymentMethod}
+                      onChange={handlePaymentMethodChange}
+                      label="Payment Method"
+                    >
+                      {PAYMENT_METHODS.map((method) => {
+                        // If one payment method is already used and we're selecting for the second method,
+                        // don't allow selecting the same method again
+                        const isMethodAlreadyUsed = 
+                          splitPayments.length === 1 && 
+                          splitPayments[0].payment_method === method;
+                          
+                        return !isMethodAlreadyUsed ? (
+                          <MenuItem key={method} value={method}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                              {PAYMENT_METHOD_LABELS[method]}
+                              {method === 'cash' && (
+                                <Chip 
+                                  size="small" 
+                                  label="No GST" 
+                                  color="success" 
+                                  sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                                />
+                              )}
+                            </Box>
+                          </MenuItem>
+                        ) : null;
+                      })}
+                    </Select>
+                  </FormControl>
+                  
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<AddIcon />}
+                    onClick={handleAddSplitPayment}
+                    disabled={newPaymentAmount <= 0 || newPaymentAmount > pendingAmount}
+                  >
+                    Add Payment
+                  </Button>
+                </Box>
+              ) : (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <Typography variant="body2">
+                    Maximum of 2 payment methods reached. Remove one to add another.
+                  </Typography>
+                </Alert>
+              )}
+              
+              {/* Payment summary */}
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+                <Typography>
+                  Amount Paid: <strong>{formatCurrency(calculateTotalPaid(splitPayments))}</strong>
+                </Typography>
+                <Typography>
+                  Pending: <strong>{formatCurrency(pendingAmount)}</strong>
+                </Typography>
+              </Box>
+            </Paper>
+            
+            {/* GST Breakdown */}
+            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                GST Breakdown
+              </Typography>
+              
+              <Box sx={{ mb: 2 }}>
+                {/* Check if we have mixed payment methods (cash + non-cash) */}
+                {(() => {
+                  const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+                  const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+                  const hasMixedPayments = hasCash && hasNonCash;
+                  
+                  if (splitPayments.length === 0) {
+                    return (
+                      <Typography variant="body2" color="text.secondary">
+                        No payments added yet.
+                      </Typography>
+                    );
+                  }
+                  
+                  // If mixed payments, show GST for all payments
+                  if (hasMixedPayments) {
+                    return splitPayments.map((payment, index) => (
+                      <Box 
+                        key={index} 
+                        sx={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          mb: 1 
+                        }}
+                      >
+                        <Typography>
+                          GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
+                        </Typography>
+                        <Typography>
+                          {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
+                        </Typography>
+                      </Box>
+                    ));
+                  } else {
+                    // Otherwise only show GST for non-cash payments
+                    return splitPayments
+                      .filter(payment => payment.payment_method !== 'cash')
+                      .map((payment, index) => (
+                        <Box 
+                          key={index} 
+                          sx={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            mb: 1 
+                          }}
+                        >
+                          <Typography>
+                            GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
+                          </Typography>
+                          <Typography>
+                            {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
+                          </Typography>
+                        </Box>
+                      ));
+                  }
+                })()}
+                
+                {/* Show total GST */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  borderTop: '1px dashed rgba(0, 0, 0, 0.12)',
+                  pt: 1,
+                  mt: 1
+                }}>
+                  <Typography fontWeight="medium">Total GST:</Typography>
+                  <Typography fontWeight="medium">
+                    {formatCurrency(tax)}
+                  </Typography>
+                </Box>
+              </Box>
+              
+              {/* Only show the cash exemption alert if there's no mixed payment */}
+              {splitPayments.some(payment => payment.payment_method === 'cash') && 
+              !splitPayments.some(payment => payment.payment_method !== 'cash') && (
+                <Alert severity="success" sx={{ mb: 1 }}>
+                  <Typography variant="body2">
+                    No GST applied to cash payments: {formatCurrency(
+                      splitPayments
+                        .filter(payment => payment.payment_method === 'cash')
+                        .reduce((sum, payment) => sum + payment.amount, 0)
+                    )}
+                  </Typography>
+                </Alert>
+              )}
+            </Paper>
+            
+            {pendingAmount > 0 && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                The remaining amount of {formatCurrency(pendingAmount)} will be marked as pending and can be collected later.
+              </Alert>
+            )}
+          </Box>
+        ) : (
+          // Standard payment UI
+          <>
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel>Payment Method</InputLabel>
+              <Select
+                value={walkInPaymentMethod}
+                onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
+                label="Payment Method"
+              >
+                {PAYMENT_METHODS.map((method) => (
+                  <MenuItem key={method} value={method}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
+                      {PAYMENT_METHOD_LABELS[method]}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            {walkInPaymentMethod === 'bnpl' && (
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Buy Now Pay Later: The customer will need to pay the full amount later.
+              </Alert>
+            )}
+            
+            {walkInPaymentMethod !== 'cash' && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography>GST (18%):</Typography>
+                <Typography>{formatCurrency(tax)}</Typography>
+              </Box>
+            )}
+            
+            {walkInPaymentMethod === 'cash' && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography color="success.main">No GST (Cash Payment)</Typography>
+                <Typography color="success.main">₹0</Typography>
+              </Box>
+            )}
+          </>
+        )}
+      </Box>
+    );
+  }, [
+    isSplitPayment, 
+    handleToggleSplitPayment, 
+    splitPayments, 
+    newPaymentAmount, 
+    newPaymentMethod, 
+    pendingAmount, 
+    handleNewPaymentAmountChange, 
+    handlePaymentMethodChange, 
+    handleAddSplitPayment, 
+    handleRemoveSplitPayment, 
+    calculateTotalPaid, 
+    tax, 
+    walkInPaymentMethod, 
+    setWalkInPaymentMethod
+  ]);
+
   if (isLoading || loadingStylists || loadingServices || loadingClients || loadingServiceCollections || loadingCollectionServices || loadingCollections) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -1391,294 +1780,8 @@ export default function POS() {
                         Payment Method
                       </Typography>
                       
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={isSplitPayment}
-                            onChange={(e) => dispatch({ type: 'SET_SPLIT_PAYMENT', value: e.target.checked })}
-                            color="primary"
-                          />
-                        }
-                        label="Split Payment"
-                        sx={{ mb: 2 }}
-                      />
-                      
-                      {isSplitPayment ? (
-                        // Split payment UI
-                        <Box>
-                          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                              Split Payment Details
-                            </Typography>
-                            
-                            {/* Show GST information at the top */}
-                            <Alert severity="info" sx={{ mb: 2 }}>
-                              <Typography variant="body2">
-                                GST (18%) is applied to non-cash payment methods. When mixing cash with other payment methods, 
-                                GST will be applied to the complete amount. Maximum 2 payment methods allowed. No two payments of the same type allowed.
-                              </Typography>
-                            </Alert>
-                            
-                            <TableContainer sx={{ maxHeight: 200, mb: 2 }}>
-                              <Table size="small" stickyHeader>
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell>Amount</TableCell>
-                                    <TableCell>Method</TableCell>
-                                    <TableCell>GST Applicable</TableCell>
-                                    <TableCell align="right">Actions</TableCell>
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  {splitPayments.map((payment) => (
-                                    <TableRow key={payment.id}>
-                                      <TableCell>{formatCurrency(payment.amount)}</TableCell>
-                                      <TableCell>{PAYMENT_METHOD_LABELS[payment.payment_method]}</TableCell>
-                                      <TableCell>
-                                        {payment.payment_method === 'cash' && 
-                                         !splitPayments.some(p => p.payment_method !== 'cash') ? (
-                                          <Typography color="success.main">No</Typography>
-                                        ) : (
-                                          <Typography>Yes</Typography>
-                                        )}
-                                      </TableCell>
-                                      <TableCell align="right">
-                                        <IconButton 
-                                          size="small" 
-                                          onClick={() => handleRemoveSplitPayment(payment.id)}
-                                          aria-label="delete payment"
-                                        >
-                                          <DeleteOutlineIcon fontSize="small" />
-                                        </IconButton>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                  {splitPayments.length === 0 && (
-                                    <TableRow>
-                                      <TableCell colSpan={4} align="center">
-                                        <Typography variant="body2" color="text.secondary">
-                                          No payments added yet
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
-                                  )}
-                                </TableBody>
-                              </Table>
-                            </TableContainer>
-                            
-                            {/* Only show the payment input fields if less than 2 payment methods are added */}
-                            {splitPayments.length < 2 ? (
-                              <Box sx={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
-                                <TextField
-                                  label="Amount"
-                                  type="number"
-                                  value={newPaymentAmount}
-                                  onChange={(e) => dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: Number(e.target.value) })}
-                                  sx={{ minWidth: 120 }}
-                                  InputProps={{
-                                    inputProps: { min: 1, max: pendingAmount },
-                                    startAdornment: <InputAdornment position="start">₹</InputAdornment>,
-                                  }}
-                                  helperText={`Max: ${formatCurrency(pendingAmount)}`}
-                                />
-                                
-                                <FormControl sx={{ minWidth: 150 }}>
-                                  <InputLabel>Payment Method</InputLabel>
-                                  <Select
-                                    value={newPaymentMethod}
-                                    onChange={handlePaymentMethodChange}
-                                    label="Payment Method"
-                                  >
-                                    {PAYMENT_METHODS.map((method) => {
-                                      // If one payment method is already used and we're selecting for the second method,
-                                      // don't allow selecting the same method again
-                                      const isMethodAlreadyUsed = 
-                                        splitPayments.length === 1 && 
-                                        splitPayments[0].payment_method === method;
-                                        
-                                      return !isMethodAlreadyUsed ? (
-                                        <MenuItem key={method} value={method}>
-                                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                            <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                                            {PAYMENT_METHOD_LABELS[method]}
-                                            {method === 'cash' && (
-                                              <Chip 
-                                                size="small" 
-                                                label="No GST" 
-                                                color="success" 
-                                                sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
-                                              />
-                                            )}
-                                          </Box>
-                                        </MenuItem>
-                                      ) : null;
-                                    })}
-                                  </Select>
-                                </FormControl>
-                                
-                                <Button
-                                  variant="contained"
-                                  color="primary"
-                                  startIcon={<AddIcon />}
-                                  onClick={handleAddSplitPayment}
-                                  disabled={newPaymentAmount <= 0 || newPaymentAmount > pendingAmount}
-                                >
-                                  Add Payment
-                                </Button>
-                              </Box>
-                            ) : (
-                              <Alert severity="warning" sx={{ mb: 2 }}>
-                                <Typography variant="body2">
-                                  Maximum of 2 payment methods reached. Remove one to add another.
-                                </Typography>
-                              </Alert>
-                            )}
-                            
-                            {/* Payment summary */}
-                            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography>
-                                Amount Paid: <strong>{formatCurrency(getAmountPaid())}</strong>
-                              </Typography>
-                              <Typography>
-                                Pending: <strong>{formatCurrency(pendingAmount)}</strong>
-                              </Typography>
-                            </Box>
-                          </Paper>
-                          
-                          {/* Display GST breakdown for split payments */}
-                          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                            <Typography variant="subtitle1" gutterBottom fontWeight="medium">
-                              GST Breakdown
-                            </Typography>
-                            
-                            <Box sx={{ mb: 2 }}>
-                              {/* Check if we have mixed payment methods (cash + non-cash) */}
-                              {(() => {
-                                const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
-                                const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
-                                const hasMixedPayments = hasCash && hasNonCash;
-                                
-                                // If mixed payments, show GST for all payments
-                                if (hasMixedPayments) {
-                                  return splitPayments.map((payment, index) => (
-                                    <Box 
-                                      key={index} 
-                                      sx={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        mb: 1 
-                                      }}
-                                    >
-                                      <Typography>
-                                        GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
-                                      </Typography>
-                                      <Typography>
-                                        {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
-                                      </Typography>
-                                    </Box>
-                                  ));
-                                } else {
-                                  // Otherwise only show GST for non-cash payments
-                                  return splitPayments
-                                    .filter(payment => payment.payment_method !== 'cash')
-                                    .map((payment, index) => (
-                                      <Box 
-                                        key={index} 
-                                        sx={{ 
-                                          display: 'flex', 
-                                          justifyContent: 'space-between', 
-                                          mb: 1 
-                                        }}
-                                      >
-                                        <Typography>
-                                          GST on {PAYMENT_METHOD_LABELS[payment.payment_method]} ({formatCurrency(payment.amount)}):
-                                        </Typography>
-                                        <Typography>
-                                          {formatCurrency(Math.round(payment.amount * 0.18 / 1.18))}
-                                        </Typography>
-                                      </Box>
-                                    ));
-                                }
-                              })()}
-                              
-                              {/* Show total GST */}
-                              <Box sx={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                borderTop: '1px dashed rgba(0, 0, 0, 0.12)',
-                                pt: 1,
-                                mt: 1
-                              }}>
-                                <Typography fontWeight="medium">Total GST:</Typography>
-                                <Typography fontWeight="medium">
-                                  {formatCurrency(tax)}
-                                </Typography>
-                              </Box>
-                            </Box>
-                            
-                            {/* Only show the cash exemption alert if there's no mixed payment */}
-                            {splitPayments.some(payment => payment.payment_method === 'cash') && 
-                            !splitPayments.some(payment => payment.payment_method !== 'cash') && (
-                              <Alert severity="success" sx={{ mb: 1 }}>
-                                <Typography variant="body2">
-                                  No GST applied to cash payments: {formatCurrency(
-                                    splitPayments
-                                      .filter(payment => payment.payment_method === 'cash')
-                                      .reduce((sum, payment) => sum + payment.amount, 0)
-                                  )}
-                                </Typography>
-                              </Alert>
-                            )}
-                          </Paper>
-                          
-                          {pendingAmount > 0 && (
-                            <Alert severity="info" sx={{ mb: 2 }}>
-                              The remaining amount of {formatCurrency(pendingAmount)} will be marked as pending and can be collected later.
-                            </Alert>
-                          )}
-                        </Box>
-                      ) : (
-                        // Standard payment UI
-                        <>
-                          <FormControl fullWidth sx={{ mb: 3 }}>
-                            <InputLabel>Payment Method</InputLabel>
-                            <Select
-                              value={walkInPaymentMethod}
-                              onChange={(e) => setWalkInPaymentMethod(e.target.value as PaymentMethod)}
-                              label="Payment Method"
-                            >
-                              {PAYMENT_METHODS.map((method) => (
-                                <MenuItem key={method} value={method}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <Box sx={{ mr: 1 }}>{PaymentIcons[method]}</Box>
-                                    {PAYMENT_METHOD_LABELS[method]}
-                                  </Box>
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                          
-                          {walkInPaymentMethod === 'bnpl' && (
-                            <Alert severity="info" sx={{ mb: 3 }}>
-                              Buy Now Pay Later: The customer will need to pay the full amount later.
-                            </Alert>
-                          )}
-                          
-                          {walkInPaymentMethod !== 'cash' && (
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography>GST (18%):</Typography>
-                              <Typography>{formatCurrency(tax)}</Typography>
-                            </Box>
-                          )}
-                          
-                          {walkInPaymentMethod === 'cash' && (
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography color="success.main">No GST (Cash Payment)</Typography>
-                              <Typography color="success.main">₹0</Typography>
-                            </Box>
-                          )}
-                        </>
-                      )}
+                      {/* Render the payment method section with stable handlers and memoization */}
+                      {renderPaymentMethodSection()}
                       
                       <TextField
                         label="Discount Amount"
