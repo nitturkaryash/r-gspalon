@@ -396,12 +396,44 @@ export function useAppointments() {
     },
   });
 
+  // Function to update Google Calendar ID for an appointment
+  const updateAppointmentGoogleCalendarId = useMutation({
+    mutationFn: async ({ appointmentId, googleCalendarId }: { appointmentId: string, googleCalendarId: string }) => {
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const index = mockAppointments.findIndex((a: Appointment) => a.id === appointmentId);
+      if (index === -1) throw new Error('Appointment not found');
+      
+      // Update the appointment with the Google Calendar ID
+      const updatedAppointments = [...mockAppointments];
+      updatedAppointments[index] = {
+        ...updatedAppointments[index],
+        googleCalendarId
+      };
+      
+      mockAppointments = updatedAppointments;
+      
+      // Save updated appointments to localStorage
+      saveToStorage('appointments', mockAppointments);
+      
+      return mockAppointments[index];
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    },
+    onError: (error) => {
+      toast.error('Failed to update Google Calendar ID');
+      console.error('Error updating Google Calendar ID:', error);
+    },
+  });
+
   return {
     appointments,
     isLoading,
     createAppointment: createAppointment.mutate,
     updateAppointment: updateAppointment.mutate,
     deleteAppointment: deleteAppointment.mutate,
-    updateAppointmentGoogleCalendarId,
+    updateAppointmentGoogleCalendarId: updateAppointmentGoogleCalendarId.mutate,
   };
 } 
