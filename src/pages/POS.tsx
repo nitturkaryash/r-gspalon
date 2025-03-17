@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, useReducer } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Box,
@@ -137,6 +137,73 @@ const PaymentIcons: Record<PaymentMethod, React.ReactNode> = {
   bnpl: <CalendarTodayIcon />,
 };
 
+// Define action types
+type POSAction =
+  | { type: 'SET_SPLIT_PAYMENT', value: boolean }
+  | { type: 'SET_SPLIT_PAYMENTS', payments: PaymentDetail[] }
+  | { type: 'SET_PENDING_AMOUNT', amount: number }
+  | { type: 'SET_NEW_PAYMENT_AMOUNT', amount: number }
+  | { type: 'SET_NEW_PAYMENT_METHOD', method: PaymentMethod }
+  | { type: 'RESET_PAYMENT_STATE', activeStep: number }
+  | { type: 'ENTER_PAYMENT_STEP', total: number };
+
+// Define state interface
+interface POSPaymentState {
+  isSplitPayment: boolean;
+  splitPayments: PaymentDetail[];
+  pendingAmount: number;
+  newPaymentAmount: number;
+  newPaymentMethod: PaymentMethod;
+  lastUpdated: string; // Track what was last updated to prevent loops
+}
+
+// Define reducer
+const paymentReducer = (state: POSPaymentState, action: POSAction): POSPaymentState => {
+  switch (action.type) {
+    case 'SET_SPLIT_PAYMENT':
+      if (state.isSplitPayment === action.value) return state;
+      return { ...state, isSplitPayment: action.value, lastUpdated: 'isSplitPayment' };
+      
+    case 'SET_SPLIT_PAYMENTS':
+      return { ...state, splitPayments: action.payments, lastUpdated: 'splitPayments' };
+      
+    case 'SET_PENDING_AMOUNT':
+      if (Math.abs(state.pendingAmount - action.amount) < 0.01) return state;
+      return { ...state, pendingAmount: action.amount, lastUpdated: 'pendingAmount' };
+      
+    case 'SET_NEW_PAYMENT_AMOUNT':
+      return { ...state, newPaymentAmount: action.amount, lastUpdated: 'newPaymentAmount' };
+      
+    case 'SET_NEW_PAYMENT_METHOD':
+      return { ...state, newPaymentMethod: action.method, lastUpdated: 'newPaymentMethod' };
+      
+    case 'RESET_PAYMENT_STATE':
+      if (action.activeStep !== 2) {
+        return {
+          ...state,
+          isSplitPayment: false,
+          splitPayments: [],
+          newPaymentAmount: 0,
+          lastUpdated: 'reset'
+        };
+      }
+      return state;
+      
+    case 'ENTER_PAYMENT_STEP':
+      if (Math.abs(state.pendingAmount - action.total) > 0.01) {
+        return {
+          ...state,
+          pendingAmount: action.total,
+          lastUpdated: 'enterPayment'
+        };
+      }
+      return state;
+      
+    default:
+      return state;
+  }
+};
+
 export default function POS() {
   // Get location for accessing navigation state
   const location = useLocation();
@@ -167,12 +234,18 @@ export default function POS() {
   const [snackbarOpen, setSnackbarOpen] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState('')
   
-  // State for split payment
-  const [isSplitPayment, setIsSplitPayment] = useState(false);
-  const [splitPayments, setSplitPayments] = useState<PaymentDetail[]>([]);
-  const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
-  const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('cash');
-  const [pendingAmount, setPendingAmount] = useState<number>(0);
+  // Setup payment state reducer
+  const initialPaymentState: POSPaymentState = {
+    isSplitPayment: false,
+    splitPayments: [],
+    pendingAmount: 0,
+    newPaymentAmount: 0,
+    newPaymentMethod: 'cash',
+    lastUpdated: 'init'
+  };
+  
+  const [paymentState, dispatch] = useReducer(paymentReducer, initialPaymentState);
+  const { isSplitPayment, splitPayments, pendingAmount, newPaymentAmount, newPaymentMethod } = paymentState;
   
   // State for services and products
   const [serviceSearchQuery, setServiceSearchQuery] = useState('')
@@ -199,11 +272,11 @@ export default function POS() {
   const [_expandedServiceCollection, _setExpandedServiceCollection] = useState<boolean>(false);
   const [_expandedProductCategory, _setExpandedProductCategory] = useState<boolean>(false);
   
-  // Filter active services for the order creation
-  const activeServices = allServices?.filter(service => service.active) || [];
-  
   // Add a state for inventory product category
   const [showInventoryProducts, setShowInventoryProducts] = useState(true);
+  
+  // Filter active services for the order creation
+  const activeServices = allServices?.filter(service => service.active) || [];
   
   // Add refs to track previous values
   const prevPendingAmountRef = useRef<number>(0);
@@ -326,35 +399,6 @@ export default function POS() {
     return totalPaid === total ? 0 : Math.max(0, total - totalPaid);
   };
 
-  // Update pending amount when split payments change
-  useEffect(() => {
-    if (isSplitPayment && splitPayments.length > 0) {
-      // Calculate remaining based on current splitPayments
-      const totalPaid = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
-      
-      // Use simple matching to determine if the amount should be zero
-      // This prevents unnecessary re-renders
-      let remaining = 0;
-      
-      // Only calculate remaining if total paid is less than total
-      if (totalPaid < total) {
-        remaining = total - totalPaid;
-        // If very close to zero, just set to zero
-        if (remaining < 0.01) {
-          remaining = 0;
-        }
-      }
-      
-      // Only update state if the value is different by more than a small threshold
-      // AND different from the previous value we tracked
-      if (Math.abs(pendingAmount - remaining) > 0.01 && 
-          Math.abs(prevPendingAmountRef.current - remaining) > 0.01) {
-        prevPendingAmountRef.current = remaining;
-        setPendingAmount(remaining);
-      }
-    }
-  }, [splitPayments, total, isSplitPayment, pendingAmount]);
-
   // Handle pre-filled appointment data
   useEffect(() => {
     if (appointmentData) {
@@ -397,90 +441,94 @@ export default function POS() {
   }, [appointmentData, allServices, clients]);
 
   // Handle client selection
-  const handleClientSelect = (client: any) => {
+  const handleClientSelect = useCallback((client: any) => {
     setSelectedClient(client);
     if (client) {
       setCustomerName(client.full_name);
     } else {
       setCustomerName('');
     }
-  };
+  }, []);
 
   // Update the handleAddService function
-  const handleAddService = (service: POSService, itemType: 'service' | 'product' = 'service') => {
+  const handleAddService = useCallback((service: POSService, itemType: 'service' | 'product' = 'service') => {
     // Check if the service is already in the order
-    const existingItemIndex = orderItems.findIndex(
-      item => item.service.id === service.id
-    );
-
-    if (existingItemIndex >= 0) {
-      // If the service is already in the order, increment the quantity
-      const updatedItems = [...orderItems];
-      updatedItems[existingItemIndex].quantity += 1;
-      setOrderItems(updatedItems);
-    } else {
-      // Otherwise, add the service to the order
-      setOrderItems([
-        ...orderItems,
-        {
-          service,
-          quantity: 1,
-          type: itemType
-        }
-      ]);
-    }
-
+    setOrderItems(prevItems => {
+      const existingItemIndex = prevItems.findIndex(
+        item => item.service.id === service.id
+      );
+  
+      if (existingItemIndex >= 0) {
+        // If the service is already in the order, increment the quantity
+        const updatedItems = [...prevItems];
+        updatedItems[existingItemIndex].quantity += 1;
+        return updatedItems;
+      } else {
+        // Otherwise, add the service to the order
+        return [
+          ...prevItems,
+          {
+            service,
+            quantity: 1,
+            type: itemType
+          }
+        ];
+      }
+    });
+  
     // Show a toast notification
     toast.success(`Added ${service.name} to order`);
-  };
+  }, []);
 
   // Add a handler for price changes
-  const handlePriceChange = (serviceId: string, newPrice: number) => {
-    setOrderItems(
-      orderItems.map((item) =>
+  const handlePriceChange = useCallback((serviceId: string, newPrice: number) => {
+    setOrderItems(prevItems =>
+      prevItems.map((item) =>
         item.service.id === serviceId
           ? { ...item, customPrice: newPrice }
           : item
       )
     );
-  };
+  }, []);
 
   // Remove a service from the walk-in order
-  const handleRemoveService = (serviceId: string) => {
-    const existingItemIndex = orderItems.findIndex(item => item.service.id === serviceId);
-    
-    if (existingItemIndex === -1) return;
-    
-    const updatedItems = [...orderItems];
-    
-    if (updatedItems[existingItemIndex].quantity > 1) {
-      // Decrement quantity
-      updatedItems[existingItemIndex].quantity -= 1;
-    } else {
-      // Remove item completely
-      updatedItems.splice(existingItemIndex, 1);
-    }
-    
-    setOrderItems(updatedItems);
-  };
+  const handleRemoveService = useCallback((serviceId: string) => {
+    setOrderItems(prevItems => {
+      const existingItemIndex = prevItems.findIndex(item => item.service.id === serviceId);
+      
+      if (existingItemIndex === -1) return prevItems;
+      
+      const updatedItems = [...prevItems];
+      
+      if (updatedItems[existingItemIndex].quantity > 1) {
+        // Decrement quantity
+        updatedItems[existingItemIndex].quantity -= 1;
+      } else {
+        // Remove item completely
+        updatedItems.splice(existingItemIndex, 1);
+      }
+      
+      return updatedItems;
+    });
+  }, []);
 
   // Delete a service completely from the order
-  const handleDeleteService = (serviceId: string) => {
-    setOrderItems(orderItems.filter(item => item.service.id !== serviceId));
-  };
+  const handleDeleteService = useCallback((serviceId: string) => {
+    setOrderItems(prevItems => prevItems.filter(item => item.service.id !== serviceId));
+  }, []);
 
   // Handle steps in walk-in order process
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     // Validate current step before proceeding
     if (!isStepValid()) {
       return;
     }
     setActiveStep((prev) => prev + 1);
-  };
+  }, [isStepValid]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     setActiveStep((prevStep) => prevStep - 1);
-  };
+  }, []);
 
   // Update handleAddSplitPayment to use the new function
   const handleAddSplitPayment = useCallback(() => {
@@ -513,21 +561,20 @@ export default function POS() {
       payment_date: new Date().toISOString(),
     };
     
-    // Add to split payments array - avoid direct state updates in render
-    setSplitPayments(prevPayments => [...prevPayments, newPayment]);
-    
-    // Reset form fields for next payment
-    setNewPaymentMethod("");
-    setNewPaymentAmount(0);
-    
-    // pendingAmount will be updated by the useEffect that depends on splitPayments
-  }, [splitPayments.length, newPaymentMethod, newPaymentAmount, pendingAmount]);
-  
+    // Update state through reducer
+    dispatch({ type: 'SET_SPLIT_PAYMENTS', payments: [...splitPayments, newPayment] });
+    dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: 'cash' });
+    dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: 0 });
+  }, [splitPayments.length, newPaymentMethod, newPaymentAmount, pendingAmount, setSnackbarMessage, setSnackbarOpen]);
+
   // Remove a payment from the split payments list
   const handleRemoveSplitPayment = useCallback((paymentId: string) => {
-    setSplitPayments(prevPayments => prevPayments.filter(payment => payment.id !== paymentId));
-  }, []);
-  
+    dispatch({ 
+      type: 'SET_SPLIT_PAYMENTS', 
+      payments: splitPayments.filter(payment => payment.id !== paymentId) 
+    });
+  }, [splitPayments]);
+
   // Calculate total amount already paid
   const getAmountPaid = () => {
     return splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -535,25 +582,14 @@ export default function POS() {
   
   // Reset split payment state when moving between steps
   useEffect(() => {
-    const activeStepChanged = prevActiveStepRef.current !== activeStep;
-    const totalChanged = Math.abs(prevTotalRef.current - total) > 0.01;
+    // Reset payment state when step changes
+    dispatch({ type: 'RESET_PAYMENT_STATE', activeStep });
     
-    // Update refs
-    prevActiveStepRef.current = activeStep;
-    prevTotalRef.current = total;
-    
-    // Only reset if we're not on the payment step or just entered the payment step
-    if (activeStep !== 2) {
-      // Avoid unnecessary state updates by checking current values
-      if (isSplitPayment) setIsSplitPayment(false);
-      if (splitPayments.length > 0) setSplitPayments([]);
-      if (newPaymentAmount !== 0) setNewPaymentAmount(0);
-    } else if (activeStep === 2 && activeStepChanged && Math.abs(pendingAmount - total) > 0.01) {
-      // When entering payment step (and only when the step changes), set pending amount to total
-      // Use a small threshold to avoid floating point comparison issues
-      setPendingAmount(total);
+    // Set pending amount when entering payment step
+    if (activeStep === 2) {
+      dispatch({ type: 'ENTER_PAYMENT_STEP', total });
     }
-  }, [activeStep, total, isSplitPayment, splitPayments.length, newPaymentAmount, pendingAmount]);
+  }, [activeStep, total]);
   
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
@@ -731,7 +767,11 @@ export default function POS() {
     splitPayments, 
     total,
     stylistError,
-    clientError
+    clientError,
+    setStylistError,
+    setClientError,
+    setSnackbarMessage,
+    setSnackbarOpen
   ]);
 
   // Services Step JSX (Replace the existing service selection section)
@@ -1074,11 +1114,11 @@ export default function POS() {
 
   const handlePaymentMethodChange = (event: SelectChangeEvent<PaymentMethod>) => {
     const selectedMethod = event.target.value as PaymentMethod;
-    setNewPaymentMethod(selectedMethod);
+    dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: selectedMethod });
     
     // If this is the second payment method, set the amount to the pending amount
     if (splitPayments.length === 1) {
-      setNewPaymentAmount(pendingAmount);
+      dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: pendingAmount });
     }
   };
 
@@ -1219,6 +1259,28 @@ export default function POS() {
     );
   };
 
+  // Update pending amount when split payments change
+  useEffect(() => {
+    if (isSplitPayment && splitPayments.length > 0) {
+      // Calculate remaining based on current splitPayments
+      const totalPaid = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      
+      // Calculate remaining amount
+      let remaining = 0;
+      
+      if (totalPaid < total) {
+        remaining = total - totalPaid;
+        // If very close to zero, just set to zero
+        if (remaining < 0.01) {
+          remaining = 0;
+        }
+      }
+      
+      // Update state through reducer
+      dispatch({ type: 'SET_PENDING_AMOUNT', amount: remaining });
+    }
+  }, [splitPayments, total, isSplitPayment]);
+
   if (isLoading || loadingStylists || loadingServices || loadingClients || loadingServiceCollections || loadingCollectionServices || loadingCollections) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -1313,7 +1375,7 @@ export default function POS() {
                         control={
                           <Switch
                             checked={isSplitPayment}
-                            onChange={(e) => setIsSplitPayment(e.target.checked)}
+                            onChange={(e) => dispatch({ type: 'SET_SPLIT_PAYMENT', value: e.target.checked })}
                             color="primary"
                           />
                         }
@@ -1391,7 +1453,7 @@ export default function POS() {
                                   label="Amount"
                                   type="number"
                                   value={newPaymentAmount}
-                                  onChange={(e) => setNewPaymentAmount(Number(e.target.value))}
+                                  onChange={(e) => dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: Number(e.target.value) })}
                                   sx={{ minWidth: 120 }}
                                   InputProps={{
                                     inputProps: { min: 1, max: pendingAmount },
