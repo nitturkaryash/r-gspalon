@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Box,
@@ -340,7 +340,7 @@ export default function POS() {
         }
       }
       
-      // Only update state if the value is different
+      // Only update state if the value is different by more than a small threshold
       if (Math.abs(pendingAmount - remaining) > 0.01) {
         setPendingAmount(remaining);
       }
@@ -475,7 +475,7 @@ export default function POS() {
   };
 
   // Update handleAddSplitPayment to use the new function
-  const handleAddSplitPayment = () => {
+  const handleAddSplitPayment = useCallback(() => {
     // Validation for maximum 2 payment methods
     if (splitPayments.length >= 2) {
       setSnackbarMessage('Maximum 2 payment methods allowed');
@@ -506,19 +506,19 @@ export default function POS() {
     };
     
     // Add to split payments array - avoid direct state updates in render
-    setSplitPayments([...splitPayments, newPayment]);
+    setSplitPayments(prevPayments => [...prevPayments, newPayment]);
     
     // Reset form fields for next payment
     setNewPaymentMethod("");
     setNewPaymentAmount(0);
     
     // pendingAmount will be updated by the useEffect that depends on splitPayments
-  };
+  }, [splitPayments.length, newPaymentMethod, newPaymentAmount, pendingAmount]);
   
   // Remove a payment from the split payments list
-  const handleRemoveSplitPayment = (paymentId: string) => {
-    setSplitPayments(splitPayments.filter(payment => payment.id !== paymentId));
-  };
+  const handleRemoveSplitPayment = useCallback((paymentId: string) => {
+    setSplitPayments(prevPayments => prevPayments.filter(payment => payment.id !== paymentId));
+  }, []);
   
   // Calculate total amount already paid
   const getAmountPaid = () => {
@@ -533,11 +533,12 @@ export default function POS() {
       if (isSplitPayment) setIsSplitPayment(false);
       if (splitPayments.length > 0) setSplitPayments([]);
       if (newPaymentAmount !== 0) setNewPaymentAmount(0);
-    } else if (activeStep === 2 && pendingAmount !== total) {
-      // When entering payment step, set pending amount to total, but only if different
+    } else if (activeStep === 2 && Math.abs(pendingAmount - total) > 0.01) {
+      // When entering payment step, set pending amount to total, but only if significantly different
+      // Use a small threshold to avoid floating point comparison issues
       setPendingAmount(total);
     }
-  }, [activeStep, total]);
+  }, [activeStep, total, isSplitPayment, splitPayments.length, newPaymentAmount, pendingAmount]);
   
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
@@ -659,32 +660,64 @@ export default function POS() {
     }
   };
 
-  // Check if all items in current step are valid
-  const isStepValid = () => {
-    // Reset errors
-    setStylistError(null);
-    setClientError(null);
-    
-    if (activeStep === 0) {
-      // Validate client and stylist selection
-      let isValid = true;
-      
-      if (!selectedClient && customerName.trim() === '') {
-        setClientError('Client name is required');
-        isValid = false;
-      }
-      
-      if (!selectedStylist) {
-        setStylistError('Stylist selection is required');
-        isValid = false;
-      }
-      
-      return isValid;
+  // Modify the isStepValid function to avoid state updates during rendering
+  const isStepValid = useCallback(() => {
+    switch (activeStep) {
+      case 0: // Customer & Stylist
+        // Check if stylist is selected
+        if (!selectedStylist) {
+          setStylistError('Please select a stylist');
+          return false;
+        }
+        
+        // Check if client is selected or customer name is entered
+        if (!selectedClient && !customerName) {
+          setClientError('Please select a client or enter customer name');
+          return false;
+        }
+        
+        // Clear any previous errors
+        if (stylistError) setStylistError(null);
+        if (clientError) setClientError(null);
+        return true;
+        
+      case 1: // Services
+        // Check if at least one service is added
+        if (orderItems.length === 0) {
+          setSnackbarMessage('Please add at least one service or product');
+          setSnackbarOpen(true);
+          return false;
+        }
+        return true;
+        
+      case 2: // Payment
+        // For split payment, check if total paid matches the order total
+        if (isSplitPayment) {
+          const totalPaid = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+          // Use a small threshold for floating point comparison
+          if (Math.abs(totalPaid - total) > 0.01) {
+            setSnackbarMessage('Total paid amount must equal the order total');
+            setSnackbarOpen(true);
+            return false;
+          }
+        }
+        return true;
+        
+      default:
+        return true;
     }
-    
-    // For other steps
-    return true;
-  };
+  }, [
+    activeStep, 
+    selectedStylist, 
+    selectedClient, 
+    customerName, 
+    orderItems.length, 
+    isSplitPayment, 
+    splitPayments, 
+    total,
+    stylistError,
+    clientError
+  ]);
 
   // Services Step JSX (Replace the existing service selection section)
   const renderServiceSelectionSection = () => {
