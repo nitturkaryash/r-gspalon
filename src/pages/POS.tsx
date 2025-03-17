@@ -283,6 +283,71 @@ export default function POS() {
   const prevActiveStepRef = useRef<number>(0);
   const prevTotalRef = useRef<number>(0);
   
+  // Move isStepValid function before it's used
+  // Function to check if the current step is valid
+  const isStepValid = useCallback(() => {
+    switch (activeStep) {
+      case 0: // Customer & Stylist
+        // Check if stylist is selected
+        if (!selectedStylist) {
+          setStylistError('Please select a stylist');
+          return false;
+        }
+        
+        // Check if client is selected or customer name is entered
+        if (!selectedClient && !customerName) {
+          setClientError('Please select a client or enter customer name');
+          return false;
+        }
+        
+        // Clear any previous errors
+        if (stylistError) setStylistError(null);
+        if (clientError) setClientError(null);
+        return true;
+        
+      case 1: // Services
+        // Check if at least one service is added
+        if (orderItems.length === 0) {
+          setSnackbarMessage('Please add at least one service or product');
+          setSnackbarOpen(true);
+          return false;
+        }
+        return true;
+        
+      case 2: // Payment
+        // For split payment, ensure all amount is accounted for
+        if (isSplitPayment) {
+          // Using the accurate pending amount calculation
+          const amountPaid = calculateTotalPaid(splitPayments);
+          const pendingAmount = calculateAccuratePendingAmount(total, splitPayments);
+          
+          // Allow proceeding if pending amount is small (less than 1)
+          if (pendingAmount > 1) {
+            setSnackbarMessage('Please pay the full amount before proceeding');
+            setSnackbarOpen(true);
+            return false;
+          }
+        }
+        return true;
+        
+      default:
+        return true;
+    }
+  }, [
+    activeStep, 
+    selectedStylist, 
+    selectedClient, 
+    customerName, 
+    stylistError, 
+    clientError, 
+    orderItems.length, 
+    isSplitPayment, 
+    splitPayments, 
+    total, 
+    setSnackbarMessage, 
+    setSnackbarOpen
+  ]);
+  
   // Get services for the selected collection or all services if no collection is selected
   const getServicesForCollection = () => {
     if (!selectedServiceCollection) {
@@ -710,69 +775,6 @@ export default function POS() {
       setProcessing(false);
     }
   };
-
-  // Modify the isStepValid function to avoid state updates during rendering
-  const isStepValid = useCallback(() => {
-    switch (activeStep) {
-      case 0: // Customer & Stylist
-        // Check if stylist is selected
-        if (!selectedStylist) {
-          setStylistError('Please select a stylist');
-          return false;
-        }
-        
-        // Check if client is selected or customer name is entered
-        if (!selectedClient && !customerName) {
-          setClientError('Please select a client or enter customer name');
-          return false;
-        }
-        
-        // Clear any previous errors
-        if (stylistError) setStylistError(null);
-        if (clientError) setClientError(null);
-        return true;
-        
-      case 1: // Services
-        // Check if at least one service is added
-        if (orderItems.length === 0) {
-          setSnackbarMessage('Please add at least one service or product');
-          setSnackbarOpen(true);
-          return false;
-        }
-        return true;
-        
-      case 2: // Payment
-        // For split payment, check if total paid matches the order total
-        if (isSplitPayment) {
-          const totalPaid = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
-          // Use a small threshold for floating point comparison
-          if (Math.abs(totalPaid - total) > 0.01) {
-            setSnackbarMessage('Total paid amount must equal the order total');
-            setSnackbarOpen(true);
-            return false;
-          }
-        }
-        return true;
-        
-      default:
-        return true;
-    }
-  }, [
-    activeStep, 
-    selectedStylist, 
-    selectedClient, 
-    customerName, 
-    orderItems.length, 
-    isSplitPayment, 
-    splitPayments, 
-    total,
-    stylistError,
-    clientError,
-    setStylistError,
-    setClientError,
-    setSnackbarMessage,
-    setSnackbarOpen
-  ]);
 
   // Services Step JSX (Replace the existing service selection section)
   const renderServiceSelectionSection = () => {
