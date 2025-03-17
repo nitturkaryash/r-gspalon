@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, Outlet } from 'react-router-dom'
+import { useLocation, Outlet } from 'react-router-dom'
 import {
   Box,
   Drawer,
@@ -17,6 +17,8 @@ import {
   useMediaQuery,
   Avatar,
   Button,
+  Alert,
+  Collapse,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -35,12 +37,19 @@ import {
   Inventory,
   Settings,
   Spa,
+  Storage,
+  Close as CloseIcon,
+  DataObject,
+  Storage as DatabaseIcon,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
 import { styled } from '@mui/material/styles'
 import { alpha } from '@mui/material/styles'
 import { useAuth } from './AuthProvider'
+
+// DEVELOPMENT MODE flag
+const DEVELOPMENT_MODE = true;
 
 const drawerWidth = 240
 
@@ -63,12 +72,14 @@ const menuLinks: MenuLink[] = [
   { text: 'Members', path: '/members', icon: <CardMembership /> },
   { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
   { text: 'Inventory Setup', path: '/inventory-setup', icon: <Settings /> },
+  { text: 'Database Check', path: '/database-check', icon: <DatabaseIcon /> },
+  { text: 'Local Data', path: '/local-data', icon: <DataObject /> },
 ]
 
 const ListItemStyled = styled(ListItem)(({ theme }) => ({
   transition: 'all 0.2s ease-in-out',
   '&:hover': {
-    backgroundColor: alpha(theme.palette.salon.olive, 0.1),
+    backgroundColor: alpha(theme.palette.salon?.olive || theme.palette.primary.main, 0.1),
     transform: 'translateY(-2px)',
   },
 }))
@@ -86,30 +97,43 @@ const menuItemVariants = {
   },
 }
 
+// Simple development mode layout
 export default function Layout() {
   const theme = useTheme()
   const location = useLocation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { user, signOut } = useAuth()
+  const [showDevBanner, setShowDevBanner] = useState(DEVELOPMENT_MODE)
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
   }
 
-  const handleLogout = async () => {
-    await signOut()
+  const handleMenuItemClick = (path: string) => {
+    // Use window.location for navigation instead of React Router Link
+    window.location.href = path
+    if (isMobile) {
+      setMobileOpen(false)
+    }
   }
 
+  const handleLogout = () => {
+    // Clear auth tokens and redirect to login
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_user')
+    window.location.href = '/login'
+  }
+
+  // Simplified user section with hardcoded development user
   const userSection = (
     <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-          {user?.username.charAt(0).toUpperCase()}
+          A
         </Avatar>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            {user?.username}
+            Admin User
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Administrator
@@ -172,10 +196,8 @@ export default function Layout() {
               sx={{ width: '100%' }}
             >
               <ListItemButton
-                component={Link}
-                to={link.path}
+                onClick={() => handleMenuItemClick(link.path)}
                 selected={location.pathname === link.path}
-                onClick={isMobile ? handleDrawerToggle : undefined}
                 sx={{
                   borderRadius: 1,
                   minHeight: '48px',
@@ -209,7 +231,34 @@ export default function Layout() {
   )
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      {/* Development Mode Banner */}
+      <Collapse in={showDevBanner}>
+        <Alert 
+          severity="info"
+          sx={{ 
+            borderRadius: 0,
+            position: 'sticky',
+            top: 0,
+            zIndex: theme.zIndex.drawer + 2,
+          }}
+          action={
+            <IconButton
+              aria-label="close"
+              color="inherit"
+              size="small"
+              onClick={() => setShowDevBanner(false)}
+            >
+              <CloseIcon fontSize="inherit" />
+            </IconButton>
+          }
+        >
+          <Typography variant="body2">
+            <strong>Development Mode:</strong> Using mock data. Database operations are simulated and stored in localStorage.
+          </Typography>
+        </Alert>
+      </Collapse>
+
       <AppBar
         position="fixed"
         sx={{
@@ -218,6 +267,8 @@ export default function Layout() {
           color: 'text.primary',
           boxShadow: 1,
           zIndex: (theme) => theme.zIndex.drawer + 1,
+          top: showDevBanner ? '56px' : 0,
+          transition: 'top 0.3s',
         }}
       >
         <Toolbar>
@@ -236,61 +287,86 @@ export default function Layout() {
         </Toolbar>
       </AppBar>
 
-      <Box
-        component="nav"
-        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
-      >
-        {/* Mobile drawer */}
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: 'block', md: 'none' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
-              width: drawerWidth,
-              backgroundColor: 'background.paper',
-              borderRight: '1px solid',
-              borderColor: 'divider',
-            },
+      <Box sx={{ display: 'flex', flex: 1 }}>
+        <Box
+          component="nav"
+          sx={{ 
+            width: { md: drawerWidth }, 
+            flexShrink: { md: 0 },
+            ...(showDevBanner && { 
+              '& .MuiDrawer-paper': { 
+                top: '56px',
+                height: 'calc(100% - 56px)',
+              }
+            })
           }}
         >
-          {drawer}
-        </Drawer>
+          {/* Mobile drawer */}
+          <Drawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={handleDrawerToggle}
+            ModalProps={{ keepMounted: true }}
+            sx={{
+              display: { xs: 'block', md: 'none' },
+              '& .MuiDrawer-paper': { 
+                boxSizing: 'border-box', 
+                width: drawerWidth,
+                backgroundColor: 'background.paper',
+                borderRight: '1px solid',
+                borderColor: 'divider',
+                ...(showDevBanner && { 
+                  top: '56px',
+                  height: 'calc(100% - 56px)',
+                })
+              },
+            }}
+          >
+            {drawer}
+          </Drawer>
 
-        {/* Desktop drawer */}
-        <Drawer
-          variant="permanent"
+          {/* Desktop drawer */}
+          <Drawer
+            variant="permanent"
+            sx={{
+              display: { xs: 'none', md: 'block' },
+              '& .MuiDrawer-paper': { 
+                boxSizing: 'border-box', 
+                width: drawerWidth,
+                backgroundColor: 'background.paper',
+                borderRight: '1px solid',
+                borderColor: 'divider',
+                ...(showDevBanner && { 
+                  top: '56px',
+                  height: 'calc(100% - 56px)',
+                })
+              },
+            }}
+            open
+          >
+            {drawer}
+          </Drawer>
+        </Box>
+
+        <Box
+          component="main"
           sx={{
-            display: { xs: 'none', md: 'block' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
-              width: drawerWidth,
-              backgroundColor: 'background.paper',
-              borderRight: '1px solid',
-              borderColor: 'divider',
-            },
+            flexGrow: 1,
+            p: 3,
+            width: { md: `calc(100% - ${drawerWidth}px)` },
+            mt: { xs: 8, md: 0 },
+            minHeight: '100vh',
+            backgroundColor: 'background.default',
+            ...(showDevBanner && isMobile && {
+              mt: { xs: 'calc(56px + 64px)', md: '56px' },
+            }),
+            ...(showDevBanner && !isMobile && {
+              mt: '56px',
+            }),
           }}
-          open
         >
-          {drawer}
-        </Drawer>
-      </Box>
-
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          width: { md: `calc(100% - ${drawerWidth}px)` },
-          mt: { xs: 8, md: 0 },
-          minHeight: '100vh',
-          backgroundColor: 'background.default',
-        }}
-      >
-        <Outlet />
+          <Outlet />
+        </Box>
       </Box>
     </Box>
   )

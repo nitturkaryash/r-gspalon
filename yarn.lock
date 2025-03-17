@@ -3871,7 +3871,7 @@ pg-types@^4.0.1:
     postgres-interval "^3.0.0"
     postgres-range "^1.1.1"
 
-pg@^8.13.3:
+pg@^8.14.0:
   version "8.14.0"
   resolved "https://registry.npmjs.org/pg/-/pg-8.14.0.tgz"
   integrity sha512-nXbVpyoaXVmdqlKEzToFf37qzyeeh7mbiXsnoWvstSqohj88yaa/I/Rq/HEVn2QPSZEuLIJa/jSpRDyzjEx4FQ==

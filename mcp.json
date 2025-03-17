@@ -1,0 +1,14 @@
+{
+  "databases": [
+    {
+      "id": "supabase",
+      "type": "postgres",
+      "host": "db.cpkxkoosykyahuezxela.supabase.co",
+      "port": 5432,
+      "user": "postgres",
+      "password": "qi2GegVUMboAPyRy",
+      "database": "postgres",
+      "ssl": true
+    }
+  ]
+} 

@@ -46,6 +46,7 @@ import {
   Switch,
   FormControlLabel,
   SelectChangeEvent,
+  FormHelperText,
 } from '@mui/material'
 import { 
   Add as AddIcon, 
@@ -147,7 +148,8 @@ export default function POS() {
     isLoading, 
     processAppointmentPayment, 
     createWalkInOrder,
-    calculateTotal 
+    calculateTotal,
+    inventoryProducts 
   } = usePOS();
   const { stylists, isLoading: loadingStylists } = useStylists();
   const { services: allServices, isLoading: loadingServices } = useServices();
@@ -176,7 +178,6 @@ export default function POS() {
   const [serviceSearchQuery, setServiceSearchQuery] = useState('')
   const [selectedServiceCollection, setSelectedServiceCollection] = useState('')
   const [productSearchQuery, setProductSearchQuery] = useState('')
-  const [selectedProductCategory, setSelectedProductCategory] = useState('')
   const [activeTab, setActiveTab] = useState(0) // 0 for services, 1 for products
   
   // State for appointment payment processing
@@ -187,8 +188,10 @@ export default function POS() {
   
   // State for walk-in order creation
   const [selectedStylist, setSelectedStylist] = useState<string>('');
+  const [stylistError, setStylistError] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
+  const [clientError, setClientError] = useState<string | null>(null);
   const [appointmentDate, setAppointmentDate] = useState<Date | null>(new Date());
   const [appointmentTime, setAppointmentTime] = useState<Date | null>(new Date());
   
@@ -198,6 +201,9 @@ export default function POS() {
   
   // Filter active services for the order creation
   const activeServices = allServices?.filter(service => service.active) || [];
+  
+  // Add a state for inventory product category
+  const [showInventoryProducts, setShowInventoryProducts] = useState(true);
   
   // Get services for the selected collection or all services if no collection is selected
   const getServicesForCollection = () => {
@@ -218,58 +224,46 @@ export default function POS() {
     (service.description && service.description.toLowerCase().includes(serviceSearchQuery.toLowerCase()))
   );
   
-  // Get product categories from collections instead of products
-  const getProductCategories = () => {
-    try {
-      // If collections are available, use them
-      if (collections && collections.length > 0) {
-        return collections.map(collection => collection.name);
-      }
-      
-      // Fallback to existing method if collections aren't available
-      const products = JSON.parse(localStorage.getItem('products') || '[]');
-      const categories = [...new Set(products.map((product: any) => product.category))];
-      return categories;
-    } catch (error) {
-      console.error('Error getting product categories:', error);
-      return [];
-    }
-  };
-  
-  // Update getFilteredProducts to use collection names instead of product categories
+  // Update getFilteredProducts to work without category filtering
   const getFilteredProducts = () => {
     try {
+      // First get regular products
       const products = JSON.parse(localStorage.getItem('products') || '[]');
       
-      return products
+      let filteredProducts = products
         .filter((product: any) => {
-          // If we have a selected category, find the collection ID that matches the name
-          let matchesCategory = true;
-          if (selectedProductCategory) {
-            // If we have collections, find the one with the matching name
-            if (collections && collections.length > 0) {
-              const collection = collections.find(c => c.name === selectedProductCategory);
-              if (collection) {
-                matchesCategory = product.collection_id === collection.id;
-              } else {
-                // Fallback to the old category matching if collection not found
-                matchesCategory = product.category === selectedProductCategory;
-              }
-            } else {
-              // Fallback to the old category matching if no collections
-              matchesCategory = product.category === selectedProductCategory;
-            }
-          }
-          
-          return (
-            product.status === 'active' && 
-            product.stock > 0 &&
-            matchesCategory &&
-            product.name.toLowerCase().includes(productSearchQuery.toLowerCase())
-          );
-        });
+          // Check if product name or description matches search query
+          return productSearchQuery === '' || 
+            product.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+            (product.description && product.description.toLowerCase().includes(productSearchQuery.toLowerCase()));
+        })
+        .map((product: any) => ({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          type: 'product',
+          description: product.description,
+          image: product.image
+        }));
+      
+      // Add inventory products if selected
+      if (showInventoryProducts) {
+        const inventoryItems = inventoryProducts || [];
+        
+        // Filter inventory products by search query
+        const filteredInventoryItems = inventoryItems.filter((product: any) => 
+          productSearchQuery === '' || 
+          product.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+          (product.description && product.description.toLowerCase().includes(productSearchQuery.toLowerCase()))
+        );
+        
+        // Add filtered inventory products to the result
+        filteredProducts = [...filteredProducts, ...filteredInventoryItems];
+      }
+      
+      return filteredProducts;
     } catch (error) {
-      console.error('Error parsing products:', error);
+      console.error('Error filtering products:', error);
       return [];
     }
   };
@@ -286,28 +280,33 @@ export default function POS() {
     
   const orderSubtotal = serviceSubtotal + productSubtotal;
   
-  // Calculate tax and total based on payment method
-  // When using split payment, we need to calculate tax differently
+  // Calculate tax and total
   const { tax, total } = useMemo(() => {
-    if (isSplitPayment && splitPayments.length > 0) {
+    let calculatedTax = 0;
+    let calculatedTotal = 0;
+    
+    if (isSplitPayment) {
+      // For split payments, use different tax calculation based on payment methods
       const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
       const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
       const hasMixedPayments = hasCash && hasNonCash;
       
-      const totalPaymentAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
-      
-      let calculatedTax = 0;
       if (hasMixedPayments || hasNonCash) {
         calculatedTax = Math.round(orderSubtotal * 0.18);
       }
       
-      return {
-        tax: calculatedTax,
-        total: orderSubtotal + calculatedTax - walkInDiscount
-      };
+      calculatedTotal = orderSubtotal + calculatedTax - walkInDiscount;
     } else {
-      return calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
+      // Use the existing calculation function for non-split payments
+      const result = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
+      calculatedTax = result.tax;
+      calculatedTotal = result.total;
     }
+    
+    return {
+      tax: calculatedTax,
+      total: calculatedTotal
+    };
   }, [orderSubtotal, walkInDiscount, walkInPaymentMethod, isSplitPayment, splitPayments]);
   
   // Function to calculate total paid
@@ -324,49 +323,29 @@ export default function POS() {
 
   // Update pending amount when split payments change
   useEffect(() => {
-    if (isSplitPayment) {
-      // ABSOLUTELY FAILSAFE APPROACH: Work with paise/cents for precision
-      const totalInPaise = Math.round(total * 100);
-      const subtotalInPaise = Math.round(orderSubtotal * 100);
-      const taxInPaise = Math.round(tax * 100);
-      const paidInPaise = Math.round(splitPayments.reduce((sum, payment) => {
-        return sum + Math.round(payment.amount * 100);
-      }, 0));
+    if (isSplitPayment && splitPayments.length > 0) {
+      // Calculate remaining based on current splitPayments
+      const totalPaid = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
       
-      // Calculate remaining in paise
-      let remainingInPaise = totalInPaise - paidInPaise;
+      // Use simple matching to determine if the amount should be zero
+      // This prevents unnecessary re-renders
+      let remaining = 0;
       
-      // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
-      if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
-        console.log('CRITICAL - useEffect - Amount paid equals service subtotal, forcing pending to 0');
-        remainingInPaise = 0;
+      // Only calculate remaining if total paid is less than total
+      if (totalPaid < total) {
+        remaining = total - totalPaid;
+        // If very close to zero, just set to zero
+        if (remaining < 0.01) {
+          remaining = 0;
+        }
       }
       
-      // If within 1 rupee or negative, force to zero
-      if (remainingInPaise <= 100) {
-        remainingInPaise = 0;
+      // Only update state if the value is different
+      if (Math.abs(pendingAmount - remaining) > 0.01) {
+        setPendingAmount(remaining);
       }
-      
-      // Critical logic: if paid equals or exceeds total, remaining MUST be 0
-      if (paidInPaise >= totalInPaise) {
-        remainingInPaise = 0;
-      }
-      
-      // Calculate remaining in rupees
-      const remainingAmount = Math.max(0, remainingInPaise / 100);
-      
-      // Critical logging to diagnose the issue
-      console.log('CRITICAL - useEffect - Total (paise):', totalInPaise);
-      console.log('CRITICAL - useEffect - Subtotal (paise):', subtotalInPaise);
-      console.log('CRITICAL - useEffect - Tax (paise):', taxInPaise);
-      console.log('CRITICAL - useEffect - Paid (paise):', paidInPaise);
-      console.log('CRITICAL - useEffect - Remaining (paise):', remainingInPaise);
-      console.log('CRITICAL - useEffect - Setting pending amount to:', remainingAmount);
-      
-      // DIRECT UPDATE: Set to 0 if very close to zero or paid exceeds total
-      setPendingAmount(remainingAmount);
     }
-  }, [splitPayments, total, isSplitPayment, orderSubtotal, tax]);
+  }, [splitPayments, total, isSplitPayment, pendingAmount]);
 
   // Handle pre-filled appointment data
   useEffect(() => {
@@ -422,31 +401,29 @@ export default function POS() {
   // Update the handleAddService function
   const handleAddService = (service: POSService, itemType: 'service' | 'product' = 'service') => {
     // Check if the service is already in the order
-    const existingService = orderItems.find(
-      (s) => s.service.id === service.id
+    const existingItemIndex = orderItems.findIndex(
+      item => item.service.id === service.id
     );
 
-    if (existingService) {
-      // If the service already exists, increment its quantity
-      setOrderItems(
-        orderItems.map((s) =>
-          s.service.id === service.id
-            ? { ...s, quantity: s.quantity + 1 }
-            : s
-        )
-      );
+    if (existingItemIndex >= 0) {
+      // If the service is already in the order, increment the quantity
+      const updatedItems = [...orderItems];
+      updatedItems[existingItemIndex].quantity += 1;
+      setOrderItems(updatedItems);
     } else {
-      // If the service doesn't exist, add it to the order with a quantity of 1
+      // Otherwise, add the service to the order
       setOrderItems([
         ...orderItems,
-        { 
-          service, 
-          quantity: 1, 
-          type: service.type || itemType, // Use the passed itemType parameter or existing type
-          customPrice: service.price // Initialize customPrice with service price
+        {
+          service,
+          quantity: 1,
+          type: itemType
         }
       ]);
     }
+
+    // Show a toast notification
+    toast.success(`Added ${service.name} to order`);
   };
 
   // Add a handler for price changes
@@ -486,7 +463,11 @@ export default function POS() {
 
   // Handle steps in walk-in order process
   const handleNext = () => {
-    setActiveStep((prevStep) => prevStep + 1);
+    // Validate current step before proceeding
+    if (!isStepValid()) {
+      return;
+    }
+    setActiveStep((prev) => prev + 1);
   };
 
   const handleBack = () => {
@@ -501,7 +482,14 @@ export default function POS() {
       setSnackbarOpen(true);
       return;
     }
-
+    
+    // Validate the required fields
+    if (!newPaymentMethod) {
+      setSnackbarMessage('Please select a payment method');
+      setSnackbarOpen(true);
+      return;
+    }
+    
     // Fix validation to check if amount is between 0 and the remaining amount (inclusive)
     if (newPaymentAmount <= 0 || newPaymentAmount > pendingAmount) {
       setSnackbarMessage('Invalid payment amount');
@@ -509,6 +497,7 @@ export default function POS() {
       return;
     }
     
+    // Create new payment object
     const newPayment: PaymentDetail = {
       id: (Math.random() * 1000000).toString(), // Temporary ID - will be replaced on server
       amount: newPaymentAmount,
@@ -516,50 +505,14 @@ export default function POS() {
       payment_date: new Date().toISOString(),
     };
     
-    const updatedSplitPayments = [...splitPayments, newPayment];
-    setSplitPayments(updatedSplitPayments);
+    // Add to split payments array - avoid direct state updates in render
+    setSplitPayments([...splitPayments, newPayment]);
+    
+    // Reset form fields for next payment
+    setNewPaymentMethod("");
     setNewPaymentAmount(0);
-
-    // MOST ROBUST APPROACH: Convert to paise/cents for precision
-    const totalInPaise = Math.round(total * 100);
-    const subtotalInPaise = Math.round(orderSubtotal * 100);
-    const taxInPaise = Math.round(tax * 100);
-    const paidInPaise = Math.round(updatedSplitPayments.reduce((sum, payment) => {
-      return sum + Math.round(payment.amount * 100);
-    }, 0));
     
-    // Calculate remaining in paise
-    let remainingInPaise = totalInPaise - paidInPaise;
-    
-    // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
-    if (Math.abs(paidInPaise - subtotalInPaise) <= 100) {
-      console.log('CRITICAL - handleAddSplitPayment - Amount paid equals service subtotal, forcing pending to 0');
-      remainingInPaise = 0;
-    }
-    
-    // If within 1 rupee or negative, force to zero
-    if (remainingInPaise <= 100) {
-      remainingInPaise = 0;
-    }
-    
-    // Critical logic: if paid equals or exceeds total, remaining MUST be 0
-    if (paidInPaise >= totalInPaise) {
-      remainingInPaise = 0;
-    }
-    
-    // Calculate remaining in rupees
-    const remainingAmount = Math.max(0, remainingInPaise / 100);
-    
-    // Critical logging to diagnose the issue
-    console.log('CRITICAL - handleAddSplitPayment - Total (paise):', totalInPaise);
-    console.log('CRITICAL - handleAddSplitPayment - Subtotal (paise):', subtotalInPaise);
-    console.log('CRITICAL - handleAddSplitPayment - Tax (paise):', taxInPaise);
-    console.log('CRITICAL - handleAddSplitPayment - Paid (paise):', paidInPaise);
-    console.log('CRITICAL - handleAddSplitPayment - Remaining (paise):', remainingInPaise);
-    console.log('CRITICAL - handleAddSplitPayment - Final pending amount:', remainingAmount);
-    
-    // Set the pending amount to the calculated remaining
-    setPendingAmount(remainingAmount);
+    // pendingAmount will be updated by the useEffect that depends on splitPayments
   };
   
   // Remove a payment from the split payments list
@@ -574,12 +527,14 @@ export default function POS() {
   
   // Reset split payment state when moving between steps
   useEffect(() => {
+    // Only reset if we're not on the payment step or just entered the payment step
     if (activeStep !== 2) {
-      setIsSplitPayment(false);
-      setSplitPayments([]);
-      setNewPaymentAmount(0);
-    } else {
-      // When entering payment step, set pending amount to total
+      // Avoid unnecessary state updates by checking current values
+      if (isSplitPayment) setIsSplitPayment(false);
+      if (splitPayments.length > 0) setSplitPayments([]);
+      if (newPaymentAmount !== 0) setNewPaymentAmount(0);
+    } else if (activeStep === 2 && pendingAmount !== total) {
+      // When entering payment step, set pending amount to total, but only if different
       setPendingAmount(total);
     }
   }, [activeStep, total]);
@@ -706,16 +661,29 @@ export default function POS() {
 
   // Check if all items in current step are valid
   const isStepValid = () => {
-    switch (activeStep) {
-      case 0: // Customer & Stylist
-        return customerName.trim() !== '' && selectedStylist !== '';
-      case 1: // Services
-        return orderItems.length > 0;
-      case 2: // Payment
-        return true; // Payment method is pre-selected
-      default:
-        return false;
+    // Reset errors
+    setStylistError(null);
+    setClientError(null);
+    
+    if (activeStep === 0) {
+      // Validate client and stylist selection
+      let isValid = true;
+      
+      if (!selectedClient && customerName.trim() === '') {
+        setClientError('Client name is required');
+        isValid = false;
+      }
+      
+      if (!selectedStylist) {
+        setStylistError('Stylist selection is required');
+        isValid = false;
+      }
+      
+      return isValid;
     }
+    
+    // For other steps
+    return true;
   };
 
   // Services Step JSX (Replace the existing service selection section)
@@ -926,65 +894,59 @@ export default function POS() {
     );
   };
 
-  // Products Section JSX (Replace the existing products section)
+  // Update renderProductsSelectionSection to remove category selector
   const renderProductsSelectionSection = () => {
+    const filteredProducts = getFilteredProducts();
+    
     return (
-      <Box sx={{ p: 2, mt: 2, borderTop: '1px dashed rgba(0, 0, 0, 0.12)' }}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom sx={{ mt: 1 }}>
-              Add Products to Order
-            </Typography>
+      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Select Products
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                placeholder="Search products..."
+                value={productSearchQuery}
+                onChange={(e) => setProductSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                variant="outlined"
+                size="small"
+              />
+            </Grid>
             
-            {/* Search and filter UI */}
-            <Box sx={{ mb: 3 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <FormControl fullWidth variant="outlined">
-                    <InputLabel id="product-category-label">Product Category</InputLabel>
-                    <Select
-                      fullWidth
-                      variant="outlined"
-                      value={selectedProductCategory}
-                      onChange={(e) => setSelectedProductCategory(e.target.value)}
-                      label="Product Category"
-                    >
-                      <MenuItem value="">
-                        <em>All Categories</em>
-                      </MenuItem>
-                      {getProductCategories().map((category) => {
-                        const categoryStr = String(category);
-                        return (
-                          <MenuItem key={categoryStr} value={categoryStr}>
-                            {categoryStr}
-                          </MenuItem>
-                        );
-                      })}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    variant="outlined"
-                    placeholder="Search products..."
-                    value={productSearchQuery}
-                    onChange={(e) => setProductSearchQuery(e.target.value)}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon />
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Grid>
+            {/* Add toggle for inventory products */}
+            {inventoryProducts && inventoryProducts.length > 0 && (
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={showInventoryProducts}
+                      onChange={(e) => setShowInventoryProducts(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label="Show Inventory Products"
+                />
               </Grid>
-            </Box>
-            
-            {/* Product Grid View */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              {getFilteredProducts().map((product: any) => (
+            )}
+          </Grid>
+        </Box>
+        
+        {/* Product Grid */}
+        <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+          <Grid container spacing={2}>
+            {filteredProducts.length > 0 ? (
+              filteredProducts.map((product: any) => (
                 <Grid item xs={12} sm={6} md={4} key={product.id}>
                   <Card 
                     variant="outlined" 
@@ -1006,18 +968,20 @@ export default function POS() {
                     <CardContent>
                       <Typography variant="h6">{product.name}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {product.description}
+                        {product.description || 'No description'}
                       </Typography>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                         <Typography variant="body1" fontWeight="bold">
                           {formatCurrency(product.price)}
                         </Typography>
-                        <Chip 
-                          size="small" 
-                          label={`Stock: ${product.stock}`} 
-                          color={product.stock > 5 ? 'success' : product.stock > 0 ? 'warning' : 'error'} 
-                          variant="outlined" 
-                        />
+                        {product.stock !== undefined && (
+                          <Chip 
+                            size="small" 
+                            label={`Stock: ${product.stock}`} 
+                            color={product.stock > 5 ? 'success' : product.stock > 0 ? 'warning' : 'error'} 
+                            variant="outlined" 
+                          />
+                        )}
                       </Box>
                     </CardContent>
                     <CardActions>
@@ -1039,10 +1003,23 @@ export default function POS() {
                     </CardActions>
                   </Card>
                 </Grid>
-              ))}
-            </Grid>
+              ))
+            ) : (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No products found. Try adjusting your search.
+                  </Typography>
+                  {!inventoryProducts?.length && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      No inventory products available. Add products in the Inventory Management section.
+                    </Typography>
+                  )}
+                </Paper>
+              </Grid>
+            )}
           </Grid>
-        </Grid>
+        </Box>
       </Box>
     );
   };
@@ -1055,6 +1032,143 @@ export default function POS() {
     if (splitPayments.length === 1) {
       setNewPaymentAmount(pendingAmount);
     }
+  };
+
+  // Add a helper function to get stylists from localStorage if needed
+  const getStylists = () => {
+    // First try to get from the hook
+    if (stylists && stylists.length > 0) {
+      return stylists;
+    }
+    
+    // If hook fails, try localStorage
+    try {
+      const localStylists = localStorage.getItem('local_stylists');
+      if (localStylists) {
+        return JSON.parse(localStylists);
+      }
+    } catch (error) {
+      console.error('Error loading stylists from localStorage:', error);
+    }
+    
+    // If all else fails, return empty array
+    return [];
+  };
+
+  // When rendering the stylist selector, use the getStylists helper
+  const renderStylistSelector = () => {
+    const availableStylists = getStylists();
+    
+    return (
+      <FormControl fullWidth error={!!stylistError}>
+        <InputLabel id="stylist-select-label">Select Stylist *</InputLabel>
+        <Select
+          labelId="stylist-select-label"
+          value={selectedStylist}
+          label="Select Stylist *"
+          onChange={(e) => setSelectedStylist(e.target.value)}
+        >
+          {availableStylists.map((stylist: any) => (
+            <MenuItem key={stylist.id} value={stylist.id}>
+              {stylist.name}
+            </MenuItem>
+          ))}
+        </Select>
+        {stylistError && <FormHelperText>{stylistError}</FormHelperText>}
+      </FormControl>
+    );
+  };
+
+  // Add a helper function to get clients from localStorage if needed
+  const getClients = () => {
+    // First try to get from the hook
+    if (clients && clients.length > 0) {
+      return clients;
+    }
+    
+    // If hook fails, try localStorage
+    try {
+      const localClients = localStorage.getItem('local_clients');
+      if (localClients) {
+        return JSON.parse(localClients);
+      }
+    } catch (error) {
+      console.error('Error loading clients from localStorage:', error);
+    }
+    
+    // If all else fails, return empty array
+    return [];
+  };
+
+  // When rendering the client selector, use the getClients helper
+  const renderClientSelector = () => {
+    const availableClients = getClients();
+    
+    return (
+      <Autocomplete
+        id="client-selector"
+        options={availableClients}
+        getOptionLabel={(option) => option.full_name || ''}
+        value={selectedClient}
+        onChange={(event, newValue) => {
+          setSelectedClient(newValue);
+          if (newValue) {
+            setCustomerName(newValue.full_name || '');
+          }
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Select Client *"
+            variant="outlined"
+            error={!!clientError}
+            helperText={clientError}
+            InputProps={{
+              ...params.InputProps,
+              startAdornment: (
+                <>
+                  <InputAdornment position="start">
+                    <PersonIcon />
+                  </InputAdornment>
+                  {params.InputProps.startAdornment}
+                </>
+              ),
+            }}
+          />
+        )}
+      />
+    );
+  };
+
+  // Add a helper function to get services from localStorage if needed
+  const getServices = () => {
+    // First try to get from the hook
+    if (allServices && allServices.length > 0) {
+      return allServices;
+    }
+    
+    // If hook fails, try localStorage
+    try {
+      const localServices = localStorage.getItem('local_services');
+      if (localServices) {
+        return JSON.parse(localServices);
+      }
+    } catch (error) {
+      console.error('Error loading services from localStorage:', error);
+    }
+    
+    // If all else fails, return empty array
+    return [];
+  };
+
+  // Update the service filter using the getServices helper
+  const getFilteredServices = () => {
+    const services = getServices();
+    
+    return services.filter(service => 
+      service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase()) ||
+      (service.description && service.description.toLowerCase().includes(serviceSearchQuery.toLowerCase()))
+    );
   };
 
   if (isLoading || loadingStylists || loadingServices || loadingClients || loadingServiceCollections || loadingCollectionServices || loadingCollections) {
@@ -1094,75 +1208,11 @@ export default function POS() {
                 <Box sx={{ p: 2 }}>
                   <Grid container spacing={3}>
                     <Grid item xs={12}>
-                      <Autocomplete
-                        id="client-select"
-                        options={clients || []}
-                        getOptionLabel={(option) => option.full_name}
-                        value={selectedClient}
-                        onChange={(event, newValue) => handleClientSelect(newValue)}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Select Client"
-                            required
-                            error={customerName.trim() === ''}
-                            helperText={customerName.trim() === '' ? 'Client name is required' : ''}
-                            InputProps={{
-                              ...params.InputProps,
-                              startAdornment: (
-                                <>
-                                  <InputAdornment position="start">
-                                    <PersonIcon />
-                                  </InputAdornment>
-                                  {params.InputProps.startAdornment}
-                                </>
-                              ),
-                            }}
-                          />
-                        )}
-                        renderOption={(props, option) => {
-                          // Extract the key from props to pass it directly
-                          const { key, ...otherProps } = props;
-                          return (
-                            <li key={key} {...otherProps}>
-                              <Box>
-                                <Typography variant="body1">{option.full_name}</Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {option.phone && `Phone: ${option.phone}`} 
-                                  {option.total_spent > 0 && ` • Total Spent: ${formatCurrency(option.total_spent)}`}
-                                  {option.pending_payment > 0 && ` • Pending: ${formatCurrency(option.pending_payment)}`}
-                                </Typography>
-                              </Box>
-                            </li>
-                          );
-                        }}
-                        freeSolo
-                        onInputChange={(event, newInputValue) => {
-                          setCustomerName(newInputValue);
-                        }}
-                      />
+                      {renderClientSelector()}
                     </Grid>
                     
                     <Grid item xs={12}>
-                      <FormControl fullWidth required error={selectedStylist === ''}>
-                        <InputLabel>Select Stylist</InputLabel>
-                        <Select
-                          value={selectedStylist}
-                          onChange={(e) => setSelectedStylist(e.target.value as string)}
-                          label="Select Stylist"
-                        >
-                          {stylists?.map((stylist) => (
-                            <MenuItem key={stylist.id} value={stylist.id}>
-                              {stylist.name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                        {selectedStylist === '' && (
-                          <Typography variant="caption" color="error">
-                            Stylist selection is required
-                          </Typography>
-                        )}
-                      </FormControl>
+                      {renderStylistSelector()}
                     </Grid>
                     
                     <Grid item xs={12}>

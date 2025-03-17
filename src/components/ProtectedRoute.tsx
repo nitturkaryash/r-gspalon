@@ -8,15 +8,12 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated } = useAuth();
+  // During development, we'll skip auth checks
+  // const { isAuthenticated } = useAuth();
   const location = useLocation();
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    // Check if we have auth data in localStorage
-    const token = localStorage.getItem('auth_token');
-    const user = localStorage.getItem('auth_user');
-    
     // Short timeout to ensure smooth transition
     const timer = setTimeout(() => {
       setIsChecking(false);
@@ -33,10 +30,11 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!isAuthenticated) {
-    console.log('Not authenticated, redirecting to login from:', location.pathname);
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+  // During development, we'll skip auth checks and always render children
+  // if (!isAuthenticated) {
+  //   console.log('Not authenticated, redirecting to login from:', location.pathname);
+  //   return <Navigate to="/login" state={{ from: location }} replace />;
+  // }
 
   return <>{children}</>;
 } 

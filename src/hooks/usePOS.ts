@@ -42,6 +42,13 @@ const mockUnpaidAppointments = [
   }
 ];
 
+// Mock stylists data
+const mockStylists = [
+  { id: '1', name: 'John Doe' },
+  { id: '2', name: 'Jane Smith' },
+  { id: '3', name: 'Alex Johnson' }
+];
+
 // Mock orders data
 let mockOrders: Order[] = [];
 
@@ -143,6 +150,39 @@ export function usePOS() {
       // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 500))
       return mockOrders
+    },
+  })
+
+  // Query for inventory products
+  const { data: inventoryProducts, isLoading: loadingInventoryProducts } = useQuery({
+    queryKey: ['inventory-products'],
+    queryFn: async () => {
+      try {
+        // First try to get products from localStorage
+        const localInventoryProducts = localStorage.getItem('local_purchases');
+        if (localInventoryProducts) {
+          const purchases = JSON.parse(localInventoryProducts);
+          
+          // Transform purchases into product format for POS
+          return purchases.map((purchase: any) => ({
+            id: purchase.id || uuidv4(),
+            name: purchase.product_name,
+            price: purchase.mrp_incl_gst,
+            hsn_code: purchase.hsn_code,
+            units: purchase.units,
+            stock: purchase.purchase_qty || 0,
+            type: 'product',
+            category: 'Inventory Products',
+            active: true,
+            description: `HSN: ${purchase.hsn_code}, Units: ${purchase.units}`,
+            created_at: purchase.date || new Date().toISOString()
+          }));
+        }
+        return [];
+      } catch (error) {
+        console.error('Error loading inventory products:', error);
+        return [];
+      }
     },
   })
 
@@ -263,65 +303,24 @@ export function usePOS() {
     },
   })
   
-  // Create a new walk-in order with split payment support
+  // Create walk-in order with support for inventory products
   const createWalkInOrder = useMutation({
     mutationFn: async (data: CreateOrderData) => {
       // Simulate network delay
       await new Promise(resolve => setTimeout(resolve, 500))
       
-      // CRITICAL FIX - COMPLETELY OVERRIDE THE PENDING CALCULATION
-      // Force recalculation of all values to avoid any floating point or calculation issues
-      data = JSON.parse(JSON.stringify(data)); // Deep clone to avoid reference issues
+      // Get stylist name
+      const stylist = mockStylists.find(s => s.id === data.stylist_id)
+      if (!stylist) {
+        throw new Error('Stylist not found')
+      }
       
-      // Get the stylist name from the stylists data
-      const stylistsData = queryClient.getQueryData<any[]>(['stylists']);
-      const stylistName = stylistsData?.find(s => s.id === data.stylist_id)?.name || 'Unknown Stylist';
-      
-      // FORCE INTEGER MATH: Convert all money values to integers (paise/cents)
-      const totalInPaise = Math.round(data.total * 100);
-      const subtotalInPaise = Math.round(data.subtotal * 100);
-      const taxInPaise = Math.round(data.tax * 100);
+      // Calculate payments and pending amount
       const payments = data.payments || [];
+      const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
       
-      // Calculate total paid in paise (cents)
-      let totalPaidInPaise = 0;
-      if (payments.length > 0) {
-        totalPaidInPaise = payments.reduce((sum, payment) => {
-          // Force to integer to avoid floating point issues
-          return sum + Math.round(payment.amount * 100);
-        }, 0);
-      }
-      
-      // CRITICAL FIX: Explicitly check if the total paid equals the subtotal but not the total
-      // This handles the case where GST isn't included in the paid amount
-      console.log('CRITICAL DEBUG - Total (paise):', totalInPaise);
-      console.log('CRITICAL DEBUG - Subtotal (paise):', subtotalInPaise);
-      console.log('CRITICAL DEBUG - Tax (paise):', taxInPaise);
-      console.log('CRITICAL DEBUG - Paid (paise):', totalPaidInPaise);
-      
-      // Calculate pending amount in paise (cents), then convert back to rupees
-      let pendingAmountInPaise = Math.max(0, totalInPaise - totalPaidInPaise);
-      
-      // NEW CRITICAL FIX: If amount paid equals service subtotal, set pending to 0 as requested
-      if (Math.abs(totalPaidInPaise - subtotalInPaise) <= 100) {
-        console.log('CRITICAL DEBUG - Amount paid equals service subtotal, forcing pending to 0');
-        pendingAmountInPaise = 0;
-      }
-      
-      // Force pending to 0 if within 1 rupee of the total
-      if (pendingAmountInPaise <= 100) {
-        pendingAmountInPaise = 0;
-      }
-      
-      // If total paid is at least equal to total, force pending to 0
-      if (totalPaidInPaise >= totalInPaise) {
-        pendingAmountInPaise = 0;
-      }
-      
-      // Convert back to rupees with 2 decimal places precision
-      const pendingAmount = Math.round(pendingAmountInPaise) / 100;
-      
-      console.log('CRITICAL DEBUG - Final pending amount:', pendingAmount);
+      // Fix: Use strict equality check when determining if pending amount should be zero
+      const pendingAmount = paidAmount === data.total ? 0 : Math.max(0, data.total - paidAmount);
       
       const isSplitPayment = payments.length > 0;
       
@@ -341,13 +340,13 @@ export function usePOS() {
         });
       }
       
-      // Create order with forced values
+      // Create order
       const order: Order = {
         id: uuidv4(),
         created_at: new Date().toISOString(),
         client_name: data.client_name,
         stylist_id: data.stylist_id,
-        stylist_name: stylistName,
+        stylist_name: stylist.name,
         services: data.services,
         total: data.total,
         subtotal: data.subtotal,
@@ -355,16 +354,17 @@ export function usePOS() {
         discount: data.discount,
         payment_method: data.payment_method,
         status: orderStatus,
+        appointment_id: data.appointment_id,
+        is_walk_in: data.is_walk_in,
         appointment_time: data.appointment_time,
-        is_walk_in: true,
         payments: payments,
         pending_amount: pendingAmount,
         is_split_payment: isSplitPayment
-      };
+      }
       
       // Add to orders
-      mockOrders.push(order);
-      saveOrdersToStorage(mockOrders);
+      mockOrders.push(order)
+      saveOrdersToStorage(mockOrders)
       
       // Update product inventory if there are products in the order
       const productUpdates = data.services
@@ -376,6 +376,34 @@ export function usePOS() {
       
       if (productUpdates.length > 0) {
         try {
+          // Update inventory for products from purchases
+          const localInventoryProducts = localStorage.getItem('local_purchases');
+          if (localInventoryProducts) {
+            const purchases = JSON.parse(localInventoryProducts);
+            let updatedPurchases = false;
+            
+            // Update quantities for each product
+            productUpdates.forEach(update => {
+              const purchaseIndex = purchases.findIndex((p: any) => p.id === update.productId);
+              if (purchaseIndex >= 0 && purchases[purchaseIndex].purchase_qty) {
+                purchases[purchaseIndex].purchase_qty -= update.quantity;
+                if (purchases[purchaseIndex].purchase_qty < 0) {
+                  purchases[purchaseIndex].purchase_qty = 0;
+                }
+                updatedPurchases = true;
+              }
+            });
+            
+            // Save updated purchases back to localStorage
+            if (updatedPurchases) {
+              localStorage.setItem('local_purchases', JSON.stringify(purchases));
+              
+              // Invalidate inventory products query to refresh the data
+              queryClient.invalidateQueries({ queryKey: ['inventory-products'] });
+            }
+          }
+          
+          // Also update regular product inventory
           const result = await updateProductInventory(productUpdates);
           if (!result.success) {
             console.error('Failed to update product inventory');
@@ -388,22 +416,15 @@ export function usePOS() {
       // Update client spending data
       await updateClientFromOrder(
         data.client_name,
-        payments.reduce((sum, payment) => sum + payment.amount, 0), // Use the total amount paid
+        paidAmount, // Only update with the paid amount
         payments.length === 1 ? payments[0].payment_method : 'bnpl', // Use the first payment method or BNPL if multiple
         order.created_at
       );
       
-      return { success: true, order }
+      return order
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] })
-      queryClient.invalidateQueries({ queryKey: ['products'] }) // Invalidate products to refresh inventory
-      queryClient.invalidateQueries({ queryKey: ['clients'] }) // Invalidate clients to refresh client data
-      toast.success('Walk-in order created successfully')
-    },
-    onError: (error) => {
-      toast.error('Failed to create order')
-      console.error('Order error:', error)
     },
   })
 
@@ -555,10 +576,11 @@ export function usePOS() {
   return {
     unpaidAppointments,
     orders,
-    isLoading: loadingAppointments || loadingOrders,
+    isLoading: loadingAppointments || loadingOrders || loadingInventoryProducts,
     processAppointmentPayment: processAppointmentPayment.mutate,
     createWalkInOrder: createWalkInOrder.mutate,
     updateOrderPayment: updateOrderPayment.mutate,
     calculateTotal,
+    inventoryProducts
   }
 } 
