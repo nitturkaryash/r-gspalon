@@ -626,11 +626,25 @@ export default function POS() {
       payment_date: new Date().toISOString(),
     };
     
-    // Update state through reducer
-    dispatch({ type: 'SET_SPLIT_PAYMENTS', payments: [...splitPayments, newPayment] });
-    dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: 'cash' });
-    dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: 0 });
-  }, [splitPayments.length, newPaymentMethod, newPaymentAmount, pendingAmount, setSnackbarMessage, setSnackbarOpen]);
+    // Batch state updates to prevent multiple renders
+    const updatedPayments = [...splitPayments, newPayment];
+    
+    // Update state through reducer with a single dispatch if possible
+    dispatch({ 
+      type: 'SET_SPLIT_PAYMENTS', 
+      payments: updatedPayments 
+    });
+    
+    // Only reset payment method if it's not already 'cash'
+    if (newPaymentMethod !== 'cash') {
+      dispatch({ type: 'SET_NEW_PAYMENT_METHOD', method: 'cash' });
+    }
+    
+    // Only reset payment amount if it's not already 0
+    if (newPaymentAmount !== 0) {
+      dispatch({ type: 'SET_NEW_PAYMENT_AMOUNT', amount: 0 });
+    }
+  }, [splitPayments, newPaymentMethod, newPaymentAmount, pendingAmount, setSnackbarMessage, setSnackbarOpen]);
 
   // Remove a payment from the split payments list
   const handleRemoveSplitPayment = useCallback((paymentId: string) => {
@@ -647,14 +661,40 @@ export default function POS() {
   
   // Reset split payment state when moving between steps
   useEffect(() => {
-    // Reset payment state when step changes
-    dispatch({ type: 'RESET_PAYMENT_STATE', activeStep });
+    // Store previous values for comparison
+    const prevActiveStep = prevActiveStepRef.current;
+    prevActiveStepRef.current = activeStep;
     
-    // Set pending amount when entering payment step
-    if (activeStep === 2) {
-      dispatch({ type: 'ENTER_PAYMENT_STEP', total });
+    // Only reset payment state when step changes
+    if (prevActiveStep !== activeStep) {
+      // Reset payment state when step changes and not entering payment step
+      if (activeStep !== 2) {
+        // Only dispatch if there's something to reset
+        if (isSplitPayment || splitPayments.length > 0 || newPaymentAmount > 0) {
+          dispatch({ type: 'RESET_PAYMENT_STATE', activeStep });
+        }
+      } else if (activeStep === 2) {
+        // Only update pending amount when entering payment step and if it's different
+        if (Math.abs(pendingAmount - total) > 0.01) {
+          dispatch({ type: 'ENTER_PAYMENT_STEP', total });
+        }
+      }
     }
-  }, [activeStep, total]);
+  }, [activeStep, total, isSplitPayment, splitPayments.length, newPaymentAmount, pendingAmount]);
+  
+  // Add a useEffect to update pending amount when split payments change
+  useEffect(() => {
+    // Only run this effect when in payment step and split payment is enabled
+    if (activeStep === 2 && isSplitPayment) {
+      const totalPaid = calculateTotalPaid(splitPayments);
+      const remaining = Math.max(0, total - totalPaid);
+      
+      // Only update if the pending amount is significantly different
+      if (Math.abs(pendingAmount - remaining) > 0.01) {
+        dispatch({ type: 'SET_PENDING_AMOUNT', amount: remaining });
+      }
+    }
+  }, [activeStep, isSplitPayment, splitPayments, total, pendingAmount, calculateTotalPaid]);
   
   // Update the handleCreateWalkInOrder function
   const handleCreateWalkInOrder = async () => {
@@ -1260,28 +1300,6 @@ export default function POS() {
       (service.description && service.description.toLowerCase().includes(serviceSearchQuery.toLowerCase()))
     );
   };
-
-  // Update pending amount when split payments change
-  useEffect(() => {
-    if (isSplitPayment && splitPayments.length > 0) {
-      // Calculate remaining based on current splitPayments
-      const totalPaid = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
-      
-      // Calculate remaining amount
-      let remaining = 0;
-      
-      if (totalPaid < total) {
-        remaining = total - totalPaid;
-        // If very close to zero, just set to zero
-        if (remaining < 0.01) {
-          remaining = 0;
-        }
-      }
-      
-      // Update state through reducer
-      dispatch({ type: 'SET_PENDING_AMOUNT', amount: remaining });
-    }
-  }, [splitPayments, total, isSplitPayment]);
 
   if (isLoading || loadingStylists || loadingServices || loadingClients || loadingServiceCollections || loadingCollectionServices || loadingCollections) {
     return (
