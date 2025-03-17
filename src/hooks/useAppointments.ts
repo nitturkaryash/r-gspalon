@@ -2,6 +2,42 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
 import { StylistBreak } from './useStylists'
+import axios from 'axios'
+
+// Setup axios instance with base URL and error handling
+const api = axios.create({
+  // Use either your API URL or a default
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  }
+});
+
+// Add request and response interceptors
+api.interceptors.request.use(
+  config => {
+    // You could add auth tokens here if needed
+    return config;
+  },
+  error => Promise.reject(error)
+);
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    // Log error and show toast
+    console.error('API Error:', error);
+    if (error.response) {
+      toast.error(`Error: ${error.response.data.message || 'Something went wrong'}`);
+    } else if (error.request) {
+      toast.error('Network Error: No response received');
+    } else {
+      toast.error(`Error: ${error.message}`);
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Mock data types
 interface Client {
@@ -25,14 +61,15 @@ interface Stylist {
 
 export interface Appointment {
   id: string;
-  client_id: string;
+  client_id?: string;
+  clients?: any;
   stylist_id: string;
   service_id: string;
   start_time: string;
   end_time: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
   notes?: string;
-  paid: boolean;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  googleCalendarId?: string; // Add Google Calendar ID field
 }
 
 // Mock data
@@ -188,31 +225,6 @@ const checkBreakConflict = (
       (appointmentStart <= breakStart && appointmentEnd >= breakEnd) // Break is within appointment
     );
   });
-};
-
-// Add a helper function to ensure consistent date-time formatting
-const formatAppointmentTime = (dateTimeString: string): string => {
-  const date = new Date(dateTimeString);
-  // Ensure the date is valid
-  if (isNaN(date.getTime())) {
-    console.error('Invalid date:', dateTimeString);
-    throw new Error('Invalid appointment time');
-  }
-  
-  // Preserve the exact time components without any rounding
-  // This ensures appointments are positioned exactly at their scheduled time
-  const formattedDate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-    date.getHours(),
-    date.getMinutes(),
-    0,
-    0
-  );
-  
-  // Return ISO string for consistent formatting
-  return formattedDate.toISOString();
 };
 
 export function useAppointments() {
@@ -390,5 +402,6 @@ export function useAppointments() {
     createAppointment: createAppointment.mutate,
     updateAppointment: updateAppointment.mutate,
     deleteAppointment: deleteAppointment.mutate,
+    updateAppointmentGoogleCalendarId,
   };
 } 

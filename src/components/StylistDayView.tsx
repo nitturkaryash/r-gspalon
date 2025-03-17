@@ -53,74 +53,73 @@ const formatTime = (time: string | Date): string => {
   return `${hour12}:00 ${period}`;
 };
 
-// Define the time slots for the day (from 8 AM to 10 PM)
+// Define the time slots for the day with 30-minute intervals
 const BUSINESS_HOURS = {
   start: 8,  // 8 AM
-  end: 22,   // 10 PM
+  end: 20,   // 8 PM
 };
 
 // Update the time slot height to make the calendar more readable
 const TIME_SLOT_HEIGHT = 30; // Height in pixels for each 15-minute slot
 
-// Styled components
-const DayViewContainer = styled(Paper)(({ theme }) => ({
-  height: 'calc(100vh - 120px)',
+// Styled components with responsive design
+const DayViewContainer = styled(Box)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
-  overflow: 'hidden',
+  height: '100%',
   backgroundColor: theme.palette.background.default,
-  border: `1px solid ${theme.palette.divider}`,
+  overflow: 'hidden',
   borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[1],
 }));
 
 const DayViewHeader = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(2),
+  backgroundColor: theme.palette.background.paper,
+  borderBottom: `1px solid ${theme.palette.divider}`,
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: theme.spacing(2),
-  borderBottom: `1px solid ${theme.palette.divider}`,
-  backgroundColor: theme.palette.background.paper, // White background
-  boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.05)',
-  borderTopLeftRadius: 28, // Match container
-  borderTopRightRadius: 28, // Match container
+  flexWrap: 'wrap', // Allow wrapping on small screens
+  gap: theme.spacing(2),
+  [theme.breakpoints.down('md')]: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
 }));
 
-const ScheduleGrid = styled(Box)(({ theme }) => ({
+const DayViewContent = styled(Box)(({ theme }) => ({
   display: 'flex',
-  flex: 1,
+  flexGrow: 1,
   overflow: 'auto',
+  position: 'relative',
+  backgroundColor: theme.palette.background.default,
 }));
 
 const TimeColumn = styled(Box)(({ theme }) => ({
-  width: 100, // Increased from 80px to 100px for better readability
-  flexShrink: 0,
+  display: 'flex',
+  flexDirection: 'column',
   borderRight: `1px solid ${theme.palette.divider}`,
+  minWidth: '80px', // Width for time column
   position: 'sticky',
   left: 0,
+  zIndex: 10,
   backgroundColor: theme.palette.background.paper,
-  zIndex: 2,
+  boxShadow: '2px 0 4px rgba(0, 0, 0, 0.1)',
 }));
 
-const StylistColumn = styled(Box)(({ theme }) => ({
-  flex: 1,
-  minWidth: 200, // Increased from 180px to 200px for better spacing
-  borderRight: `1px solid ${theme.palette.divider}`,
-  position: 'relative',
-  backgroundColor: theme.palette.salon.offWhite,
-}));
-
-const StylistHeader = styled(Box)(({ theme }) => ({
-  padding: theme.spacing(1.5), // Increased padding for better visibility
-  textAlign: 'center',
-  borderBottom: `1px solid ${theme.palette.divider}`,
-  backgroundColor: theme.palette.salon.oliveLight,
-  position: 'sticky',
-  top: 0,
-  zIndex: 3,
-  height: 56, // Increased from 48px to 56px for better visibility
+const HourLabel = styled(Box)(({ theme }) => ({
+  height: TIME_SLOT_HEIGHT,
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  alignItems: 'flex-start',
+  justifyContent: 'flex-end', // Right align time labels
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  padding: theme.spacing(0, 1, 0, 0), // Right padding only
+  fontWeight: 'normal',
+  position: 'relative',
+  boxSizing: 'border-box',
+  fontSize: '0.75rem', // Smaller font size
+  color: theme.palette.text.secondary,
 }));
 
 const TimeSlot = styled(Box)(({ theme }) => ({
@@ -131,9 +130,39 @@ const TimeSlot = styled(Box)(({ theme }) => ({
   padding: theme.spacing(0.75),
   backgroundColor: theme.palette.background.paper,
   position: 'relative',
+  boxSizing: 'border-box',
   '&:last-child': {
     borderBottom: 'none',
   },
+  '&:hover': {
+    backgroundColor: theme.palette.action.hover,
+  },
+}));
+
+const StylistColumn = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  flexGrow: 1,
+  minWidth: '200px',
+  position: 'relative',
+  borderRight: `1px solid ${theme.palette.divider}`,
+  '&:last-child': {
+    borderRight: 'none',
+  },
+}));
+
+const StylistHeader = styled(Box)(({ theme }) => ({
+  height: '50px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: theme.spacing(1, 2),
+  backgroundColor: theme.palette.background.paper,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  position: 'sticky',
+  top: 0,
+  zIndex: 5,
+  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
 }));
 
 const TimeLabel = styled(Typography)(({ theme }) => ({
@@ -161,7 +190,7 @@ const AppointmentSlot = styled(Box)(({ theme }) => ({
   },
 }));
 
-// Update the AppointmentCard component
+// Update the AppointmentCard component for better alignment with Google Calendar style
 const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
   left: theme.spacing(0.75),
@@ -177,81 +206,83 @@ const AppointmentCard = styled(Box)<{ duration: number }>(({ theme, duration }) 
   fontSize: '0.9rem',
   display: 'flex',
   flexDirection: 'column',
-  justifyContent: 'space-between',
-  transition: 'all 0.2s ease-in-out',
-  cursor: 'move',
-  border: '1px solid rgba(255, 255, 255, 0.25)',
+  justifyContent: 'flex-start',
+  transition: 'all 0.2s ease',
+  cursor: 'pointer',
+  border: '1px solid rgba(0, 0, 0, 0.1)',
   '&:hover': {
-    boxShadow: '0px 6px 16px rgba(107, 142, 35, 0.4)',
-    transform: 'translateY(-2px)',
+    boxShadow: '0px 2px 5px rgba(0, 0, 0, 0.2)',
+    transform: 'translateY(-1px)',
+  },
+  // Ensure accurate positioning
+  boxSizing: 'border-box',
+  marginTop: 0,
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(0.25, 0.5),
+    fontSize: '0.75rem',
   },
 }));
 
-// Update the BreakCard component to ensure it doesn't capture mouse events
+// Update the BreakCard component for better positioning
 const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   position: 'absolute',
   left: 0,
   right: 0,
-  height: (duration / 15) * TIME_SLOT_HEIGHT, // Adjust for 15-minute slots
-  backgroundColor: '#d32f2f', // Solid red color
+  height: duration,
+  backgroundColor: '#d32f2f',
   color: '#ffffff',
   borderRadius: 0,
   padding: theme.spacing(0.75, 1),
   overflow: 'hidden',
-  boxShadow: 'none', // Remove the shadow completely
-  zIndex: 20, // Very high z-index to ensure it's above everything
-  fontSize: '0.75rem',
+  boxShadow: 'none',
+  // Ensure accurate positioning
+  boxSizing: 'border-box',
+  marginTop: 0,
+  zIndex: 4,
+  fontSize: '0.8rem',
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'center',
-  transition: 'none', // Remove transitions
-  border: 'none', // Remove border
-  cursor: 'not-allowed',
-  pointerEvents: 'none', // Prevent it from capturing mouse events
-  '&:hover': {
-    boxShadow: 'none', // No hover effect
-  },
+  opacity: 0.9,
 }));
+
+// Improved time formatting with options for 12-hour or 24-hour format
+const formatTime = (date: Date, use24Hour = false): string => {
+  if (use24Hour) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+};
 
 // Update the generateTimeSlots function to create precise 15-minute intervals
 const generateTimeSlots = () => {
   const slots = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
-    // Add slots for 0, 15, 30, and 45 minutes
+    // Add slots for 0 and 30 minutes
     slots.push({ hour, minute: 0 });
     if (hour < BUSINESS_HOURS.end) {
-      slots.push({ hour, minute: 15 });
       slots.push({ hour, minute: 30 });
-      slots.push({ hour, minute: 45 });
     }
   }
   return slots;
 };
 
-// Update the generateTimeOptions function to include 15-minute intervals
+// Generate time options for dropdown selectors
 const generateTimeOptions = () => {
   const options = [];
   for (let hour = BUSINESS_HOURS.start; hour <= BUSINESS_HOURS.end; hour++) {
     const period = hour >= 12 ? 'PM' : 'AM';
     const hour12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
     
-    // Add options for 0, 15, 30, and 45 minutes
+    // Add options for 0 and 30 minutes
     options.push({ 
       value: `${hour}:00`, 
       label: `${hour12}:00 ${period}` 
     });
     if (hour < BUSINESS_HOURS.end) {
       options.push({ 
-        value: `${hour}:15`, 
-        label: `${hour12}:15 ${period}` 
-      });
-      options.push({ 
         value: `${hour}:30`, 
         label: `${hour12}:30 ${period}` 
-      });
-      options.push({ 
-        value: `${hour}:45`, 
-        label: `${hour12}:45 ${period}` 
       });
     }
   }
@@ -388,6 +419,7 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
 
   const { clients, updateClient } = useClients();
 
+  // Handle opening the edit dialog for an appointment
   const handleAppointmentClick = (appointment: any) => {
     setSelectedAppointment(appointment);
     
@@ -407,6 +439,15 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
     });
     
     setEditDialogOpen(true);
+  };
+
+  // Handle appointment click to expand/collapse details
+  const toggleAppointmentDetails = (appointmentId: string) => {
+    if (expandedAppointment === appointmentId) {
+      setExpandedAppointment(null); // Collapse if already expanded
+    } else {
+      setExpandedAppointment(appointmentId); // Expand this appointment
+    }
   };
   
   // Drag and drop handlers
@@ -773,11 +814,59 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
     });
   };
 
-  // Add state for snackbar
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
+  // Check for appointment conflicts
+  const checkForConflicts = () => {
+    const conflicts = [];
+    
+    // Group appointments by stylist
+    const appointmentsByStylist = {};
+    appointments.forEach(appointment => {
+      if (!appointmentsByStylist[appointment.stylist_id]) {
+        appointmentsByStylist[appointment.stylist_id] = [];
+      }
+      appointmentsByStylist[appointment.stylist_id].push(appointment);
+    });
+    
+    // Check each stylist's appointments for overlaps
+    Object.keys(appointmentsByStylist).forEach(stylistId => {
+      const stylistAppointments = appointmentsByStylist[stylistId];
+      
+      for (let i = 0; i < stylistAppointments.length; i++) {
+        const appt1 = stylistAppointments[i];
+        const start1 = normalizeDateTime(appt1.start_time, currentDate).getTime();
+        const end1 = normalizeDateTime(appt1.end_time, currentDate).getTime();
+        
+        for (let j = i + 1; j < stylistAppointments.length; j++) {
+          const appt2 = stylistAppointments[j];
+          const start2 = normalizeDateTime(appt2.start_time, currentDate).getTime();
+          const end2 = normalizeDateTime(appt2.end_time, currentDate).getTime();
+          
+          // Check if appointments overlap
+          if ((start1 < end2 && end1 > start2)) {
+            conflicts.push([appt1.id, appt2.id]);
+          }
+        }
+      }
+    });
+    
+    return conflicts;
+  };
+  
+  // Get all appointments for today
+  const todayAppointments = appointments.filter(appointment => {
+    const appointmentDate = new Date(appointment.start_time);
+    return isSameDay(appointmentDate, currentDate);
+  });
+  
+  // Find conflicting appointments
+  const conflicts = checkForConflicts();
+  
+  // Function to check if an appointment has conflicts
+  const hasConflict = (appointmentId: string) => {
+    return conflicts.some(conflict => conflict.includes(appointmentId));
+  };
 
-  // Add handleSnackbarClose function
+  // Snackbar close handler
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
   };
@@ -812,35 +901,31 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
           stylistId,
           hour,
           minute,
-          slotTime: slotTime.toLocaleTimeString(),
-          slotEndTime: slotEndTime.toLocaleTimeString(),
-          breaks: todayBreaks.map((b: StylistBreak) => ({
+          breaks: todayBreaks.map(b => ({
+            id: b.id,
             startTime: new Date(b.startTime).toLocaleTimeString(),
             endTime: new Date(b.endTime).toLocaleTimeString(),
-            normalizedStart: normalizeDateTime(b.startTime).toLocaleTimeString(),
-            normalizedEnd: normalizeDateTime(b.endTime).toLocaleTimeString()
+            normalizedStart: normalizeDateTime(b.startTime, currentDate).toLocaleTimeString(),
+            normalizedEnd: normalizeDateTime(b.endTime, currentDate).toLocaleTimeString()
           }))
         });
       }
       
-      // Check if the slot time overlaps with any break period
+      // Check if any break overlaps with this time slot
       return todayBreaks.some((breakItem: StylistBreak) => {
         try {
           // Use normalized times for consistent handling
-          const breakStart = normalizeDateTime(breakItem.startTime).getTime();
-          const breakEnd = normalizeDateTime(breakItem.endTime).getTime();
+          const breakStart = normalizeDateTime(breakItem.startTime, currentDate).getTime();
+          const breakEnd = normalizeDateTime(breakItem.endTime, currentDate).getTime();
           
           // Check for any overlap between the slot and the break
-          return (
-            // Check if the slot starts during a break
-            (slotTimeValue >= breakStart && slotTimeValue < breakEnd) ||
-            // Check if the slot ends during a break
-            (slotEndTimeValue > breakStart && slotEndTimeValue <= breakEnd) ||
-            // Check if the slot completely contains a break
-            (slotTimeValue <= breakStart && slotEndTimeValue >= breakEnd)
-          );
+          const isOverlapping = 
+            (breakStart <= slotTimeValue && breakEnd > slotTimeValue) || // Break starts before/at slot and ends after slot start
+            (breakStart >= slotTimeValue && breakStart < slotEndTimeValue); // Break starts during the slot
+          
+          return isOverlapping;
         } catch (error) {
-          console.error('Error checking break time:', error, breakItem);
+          console.error('Error checking break overlap:', error);
           return false;
         }
       });
@@ -1608,17 +1693,6 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
           <Button onClick={handleBreakDialogClose}>Close</Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar 
-        open={snackbarOpen} 
-        autoHideDuration={4000} 
-        onClose={handleSnackbarClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={handleSnackbarClose} severity="warning">
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
     </DayViewContainer>
   );
 }
