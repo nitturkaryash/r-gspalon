@@ -278,6 +278,47 @@ export default function POS() {
   // Filter active services for the order creation
   const activeServices = allServices?.filter(service => service.active) || [];
   
+  // Calculate separate totals for services and products
+  const serviceItems = orderItems.filter(item => item.type === 'service');
+  const productItems = orderItems.filter(item => item.type === 'product');
+
+  const serviceSubtotal = serviceItems.reduce((sum, item) => 
+    sum + ((item.customPrice || item.service.price) * item.quantity), 0);
+    
+  const productSubtotal = productItems.reduce((sum, item) => 
+    sum + ((item.customPrice || item.service.price) * item.quantity), 0);
+    
+  const orderSubtotal = serviceSubtotal + productSubtotal;
+  
+  // Calculate tax and total
+  const { tax, total } = useMemo(() => {
+    let calculatedTax = 0;
+    let calculatedTotal = 0;
+    
+    if (isSplitPayment) {
+      // For split payments, use different tax calculation based on payment methods
+      const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
+      const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
+      const hasMixedPayments = hasCash && hasNonCash;
+      
+      if (hasMixedPayments || hasNonCash) {
+        calculatedTax = Math.round(orderSubtotal * 0.18);
+      }
+      
+      calculatedTotal = orderSubtotal + calculatedTax - walkInDiscount;
+    } else {
+      // Use the existing calculation function for non-split payments
+      const result = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
+      calculatedTax = result.tax;
+      calculatedTotal = result.total;
+    }
+    
+    return {
+      tax: calculatedTax,
+      total: calculatedTotal
+    };
+  }, [orderSubtotal, isSplitPayment, splitPayments, walkInDiscount, walkInPaymentMethod, calculateTotal]);
+  
   // Add refs to track previous values
   const prevPendingAmountRef = useRef<number>(0);
   const prevActiveStepRef = useRef<number>(0);
@@ -410,47 +451,6 @@ export default function POS() {
       return [];
     }
   };
-  
-  // Calculate separate totals for services and products
-  const serviceItems = orderItems.filter(item => item.type === 'service');
-  const productItems = orderItems.filter(item => item.type === 'product');
-
-  const serviceSubtotal = serviceItems.reduce((sum, item) => 
-    sum + ((item.customPrice || item.service.price) * item.quantity), 0);
-    
-  const productSubtotal = productItems.reduce((sum, item) => 
-    sum + ((item.customPrice || item.service.price) * item.quantity), 0);
-    
-  const orderSubtotal = serviceSubtotal + productSubtotal;
-  
-  // Calculate tax and total
-  const { tax, total } = useMemo(() => {
-    let calculatedTax = 0;
-    let calculatedTotal = 0;
-    
-    if (isSplitPayment) {
-      // For split payments, use different tax calculation based on payment methods
-      const hasCash = splitPayments.some(payment => payment.payment_method === 'cash');
-      const hasNonCash = splitPayments.some(payment => payment.payment_method !== 'cash');
-      const hasMixedPayments = hasCash && hasNonCash;
-      
-      if (hasMixedPayments || hasNonCash) {
-        calculatedTax = Math.round(orderSubtotal * 0.18);
-      }
-      
-      calculatedTotal = orderSubtotal + calculatedTax - walkInDiscount;
-    } else {
-      // Use the existing calculation function for non-split payments
-      const result = calculateTotal([orderSubtotal], walkInDiscount, walkInPaymentMethod);
-      calculatedTax = result.tax;
-      calculatedTotal = result.total;
-    }
-    
-    return {
-      tax: calculatedTax,
-      total: calculatedTotal
-    };
-  }, [orderSubtotal, walkInDiscount, walkInPaymentMethod, isSplitPayment, splitPayments]);
   
   // Function to calculate total paid
   const calculateTotalPaid = (payments: PaymentDetail[]) => {
