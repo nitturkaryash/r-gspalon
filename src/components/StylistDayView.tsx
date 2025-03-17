@@ -53,6 +53,14 @@ const formatTime = (time: string | Date): string => {
   return `${hour12}:00 ${period}`;
 };
 
+// Improved time formatting with options for 12-hour or 24-hour format
+const formatTimeWithOptions = (date: Date, use24Hour = false): string => {
+  if (use24Hour) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+};
+
 // Define the time slots for the day with 30-minute intervals
 const BUSINESS_HOURS = {
   start: 8,  // 8 AM
@@ -245,14 +253,6 @@ const BreakCard = styled(Box)<{ duration: number }>(({ theme, duration }) => ({
   justifyContent: 'center',
   opacity: 0.9,
 }));
-
-// Improved time formatting with options for 12-hour or 24-hour format
-const formatTime = (date: Date, use24Hour = false): string => {
-  if (use24Hour) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  }
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-};
 
 // Update the generateTimeSlots function to create precise 15-minute intervals
 const generateTimeSlots = () => {
@@ -833,13 +833,13 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
       
       for (let i = 0; i < stylistAppointments.length; i++) {
         const appt1 = stylistAppointments[i];
-        const start1 = normalizeDateTime(appt1.start_time, currentDate).getTime();
-        const end1 = normalizeDateTime(appt1.end_time, currentDate).getTime();
+        const start1 = normalizeDateTime(appt1.start_time);
+        const end1 = normalizeDateTime(appt1.end_time);
         
         for (let j = i + 1; j < stylistAppointments.length; j++) {
           const appt2 = stylistAppointments[j];
-          const start2 = normalizeDateTime(appt2.start_time, currentDate).getTime();
-          const end2 = normalizeDateTime(appt2.end_time, currentDate).getTime();
+          const start2 = normalizeDateTime(appt2.start_time);
+          const end2 = normalizeDateTime(appt2.end_time);
           
           // Check if appointments overlap
           if ((start1 < end2 && end1 > start2)) {
@@ -851,12 +851,6 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
     
     return conflicts;
   };
-  
-  // Get all appointments for today
-  const todayAppointments = appointments.filter(appointment => {
-    const appointmentDate = new Date(appointment.start_time);
-    return isSameDay(appointmentDate, currentDate);
-  });
   
   // Find conflicting appointments
   const conflicts = checkForConflicts();
@@ -905,8 +899,8 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
             id: b.id,
             startTime: new Date(b.startTime).toLocaleTimeString(),
             endTime: new Date(b.endTime).toLocaleTimeString(),
-            normalizedStart: normalizeDateTime(b.startTime, currentDate).toLocaleTimeString(),
-            normalizedEnd: normalizeDateTime(b.endTime, currentDate).toLocaleTimeString()
+            normalizedStart: normalizeDateTime(b.startTime).toLocaleTimeString(),
+            normalizedEnd: normalizeDateTime(b.endTime).toLocaleTimeString()
           }))
         });
       }
@@ -915,8 +909,8 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
       return todayBreaks.some((breakItem: StylistBreak) => {
         try {
           // Use normalized times for consistent handling
-          const breakStart = normalizeDateTime(breakItem.startTime, currentDate).getTime();
-          const breakEnd = normalizeDateTime(breakItem.endTime, currentDate).getTime();
+          const breakStart = normalizeDateTime(breakItem.startTime).getTime();
+          const breakEnd = normalizeDateTime(breakItem.endTime).getTime();
           
           // Check for any overlap between the slot and the break
           const isOverlapping = 
