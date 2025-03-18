@@ -3,6 +3,9 @@ import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
 import { updateProductInventory } from './useProducts'
 import { useClients } from './useClients'
+import { useState, useEffect } from 'react'
+import { db, Client } from '../db/database'
+import { useDexieClients } from './useDexieClients'
 
 // Extended payment method types to include BNPL
 export const PAYMENT_METHODS = ['cash', 'credit_card', 'debit_card', 'upi', 'bnpl'] as const
@@ -129,7 +132,126 @@ export interface Order {
 
 const GST_RATE = 0.18 // 18% GST for salon services in India
 
-export function usePOS() {
+export interface POSClient {
+  id: string;
+  name: string;
+  mobile_number?: string;
+  email?: string;
+  pos_id: string;
+}
+
+export const usePOS = () => {
+  const [posClients, setPosClients] = useState<POSClient[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  
+  const { clients, upsertClient } = useDexieClients();
+
+  // Load clients from Dexie database into POS state
+  useEffect(() => {
+    if (clients) {
+      // Map Dexie clients to POS client format
+      const mappedClients = clients.map(client => ({
+        id: client.id,
+        name: client.name,
+        mobile_number: client.mobile_number,
+        email: client.email,
+        pos_id: client.pos_id || `POS_${uuidv4().substring(0, 8)}`
+      }));
+      
+      setPosClients(mappedClients);
+    }
+  }, [clients]);
+
+  // Add client to both POS and Dexie
+  const addClient = async (client: Omit<POSClient, 'id' | 'pos_id'>) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // First generate a POS ID
+      const pos_id = `POS_${uuidv4().substring(0, 8)}`;
+      
+      // Save to Dexie
+      const now = new Date().toISOString();
+      const savedClient = await upsertClient({
+        name: client.name,
+        mobile_number: client.mobile_number,
+        email: client.email,
+        pos_id: pos_id,
+        created_at: now,
+        updated_at: now
+      });
+      
+      // Add to POS state
+      const newPosClient: POSClient = {
+        id: savedClient.id,
+        name: client.name,
+        mobile_number: client.mobile_number,
+        email: client.email,
+        pos_id: pos_id
+      };
+      
+      setPosClients(prev => [...prev, newPosClient]);
+      return newPosClient;
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update client in both POS and Dexie
+  const updateClient = async (client: POSClient) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Update in Dexie
+      const now = new Date().toISOString();
+      await upsertClient({
+        id: client.id,
+        name: client.name,
+        mobile_number: client.mobile_number,
+        email: client.email,
+        pos_id: client.pos_id,
+        updated_at: now
+      });
+      
+      // Update in POS state
+      setPosClients(prev => 
+        prev.map(c => c.id === client.id ? client : c)
+      );
+      
+      return client;
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Get all clients
+  const getClients = () => {
+    return posClients;
+  };
+
+  // Get a specific client by ID
+  const getClientById = (id: string) => {
+    return posClients.find(client => client.id === id);
+  };
+
+  // Search clients by name or phone number
+  const searchClients = (query: string) => {
+    const queryLower = query.toLowerCase();
+    return posClients.filter(client => 
+      client.name.toLowerCase().includes(queryLower) ||
+      (client.mobile_number && client.mobile_number.includes(query))
+    );
+  };
+
   const queryClient = useQueryClient()
   const { updateClientFromOrder } = useClients()
 
@@ -574,6 +696,14 @@ export function usePOS() {
   };
 
   return {
+    isLoading,
+    error,
+    clients: posClients,
+    getClients,
+    getClientById,
+    searchClients,
+    addClient,
+    updateClient,
     unpaidAppointments,
     orders,
     isLoading: loadingAppointments || loadingOrders || loadingInventoryProducts,

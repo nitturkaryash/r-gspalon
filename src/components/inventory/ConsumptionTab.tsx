@@ -19,9 +19,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  LinearProgress
+  LinearProgress,
+  Chip
 } from '@mui/material';
-import { Sync as SyncIcon } from '@mui/icons-material';
+import { Sync as SyncIcon, Info as InfoIcon } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { Consumption } from '../../models/inventoryTypes';
 import { useInventory } from '../../hooks/useInventory';
@@ -120,6 +121,16 @@ const ConsumptionTab: React.FC<ConsumptionTabProps> = ({ consumption, isLoading,
         </Button>
       </Box>
       
+      {/* Add guidance about salon consumption feature */}
+      <Paper sx={{ p: 2, mb: 3, backgroundColor: 'info.light', color: 'info.dark' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <InfoIcon sx={{ mr: 1 }} />
+          <Typography variant="body2">
+            Products marked as "Salon Consumption" in the POS system are now recorded here. Use the checkbox in POS when selling a product for salon use instead of customer sale.
+          </Typography>
+        </Box>
+      </Paper>
+      
       {/* Processing progress indicator */}
       {isSyncingConsumption && processingStats && (
         <Box sx={{ width: '100%', mb: 2 }}>
@@ -144,7 +155,9 @@ const ConsumptionTab: React.FC<ConsumptionTabProps> = ({ consumption, isLoading,
       ) : (
         <>
           {consumption.length === 0 ? (
-            <Alert severity="info">No consumption records found. Sync with the POS system to fetch salon consumption data.</Alert>
+            <Alert severity="info">
+              No consumption records found. Use the "Mark as Salon Consumption" checkbox in POS when processing products for salon use, then sync with the POS system to fetch salon consumption data.
+            </Alert>
           ) : (
             <Paper>
               <TableContainer component={Paper} sx={{ maxHeight: 440 }}>
@@ -174,7 +187,17 @@ const ConsumptionTab: React.FC<ConsumptionTabProps> = ({ consumption, isLoading,
                           sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
                         >
                           <TableCell>{formatDate(item.date)}</TableCell>
-                          <TableCell>{item.requisition_voucher_no}</TableCell>
+                          <TableCell>
+                            {item.requisition_voucher_no}
+                            {item.requisition_voucher_no?.startsWith('POS-') && (
+                              <Chip 
+                                label="POS" 
+                                size="small" 
+                                color="primary" 
+                                sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                              />
+                            )}
+                          </TableCell>
                           <TableCell>{item.product_name}</TableCell>
                           <TableCell>{item.hsn_code}</TableCell>
                           <TableCell>{item.units}</TableCell>
@@ -208,7 +231,7 @@ const ConsumptionTab: React.FC<ConsumptionTabProps> = ({ consumption, isLoading,
         <DialogTitle>Sync Consumption Data from POS</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Select a date range to sync salon consumption data from the POS system. This process may take a few minutes depending on the amount of data.
+            Select a date range to sync salon consumption data from the POS system. This will include any products marked as "Salon Consumption" during checkout in the POS system.
           </DialogContentText>
           <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
             <TextField

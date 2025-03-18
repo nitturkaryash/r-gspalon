@@ -1,116 +1,108 @@
 import React from 'react';
-import { Box, Typography, Paper, Grid, Switch, FormControlLabel, Divider } from '@mui/material';
-import PageHeader from '../components/PageHeader';
+import { Box, Typography, Paper, Tabs, Tab, Divider } from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { DatabaseManagement } from '../components/DatabaseManagement';
 
-export default function Settings() {
-  const [settings, setSettings] = React.useState({
-    darkMode: false,
-    notifications: true,
-    emailAlerts: true,
-    autoSave: true,
-    developerMode: true
-  });
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSettings({
-      ...settings,
-      [event.target.name]: event.target.checked
-    });
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`settings-tabpanel-${index}`}
+      aria-labelledby={`settings-tab-${index}`}
+      style={{ width: '100%' }}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+function a11yProps(index: number) {
+  return {
+    id: `settings-tab-${index}`,
+    'aria-controls': `settings-tabpanel-${index}`,
+  };
+}
+
+const StyledTabs = styled(Tabs)(({ theme }) => ({
+  borderRight: `1px solid ${theme.palette.divider}`,
+  '& .MuiTab-root': {
+    alignItems: 'flex-start',
+    textAlign: 'left',
+    paddingLeft: theme.spacing(3),
+    minWidth: 180,
+  }
+}));
+
+const Settings: React.FC = () => {
+  const [value, setValue] = React.useState(0);
+
+  const handleChange = (event: React.SyntheticEvent, newValue: number) => {
+    setValue(newValue);
   };
 
   return (
-    <Box>
-      <PageHeader title="Settings">
-        <Typography variant="body2" color="text.secondary">
-          Configure application settings and preferences
-        </Typography>
-      </PageHeader>
-
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Application Settings
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.darkMode}
-                  onChange={handleChange}
-                  name="darkMode"
-                  color="primary"
-                />
-              }
-              label="Dark Mode"
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.notifications}
-                  onChange={handleChange}
-                  name="notifications"
-                  color="primary"
-                />
-              }
-              label="Enable Notifications"
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.emailAlerts}
-                  onChange={handleChange}
-                  name="emailAlerts"
-                  color="primary"
-                />
-              }
-              label="Email Alerts"
-            />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.autoSave}
-                  onChange={handleChange}
-                  name="autoSave"
-                  color="primary"
-                />
-              }
-              label="Auto Save"
-            />
-          </Paper>
-        </Grid>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Settings
+      </Typography>
+      
+      <Paper elevation={2} sx={{ mt: 3, display: 'flex', minHeight: 600 }}>
+        <Box sx={{ borderRight: 1, borderColor: 'divider' }}>
+          <StyledTabs
+            orientation="vertical"
+            value={value}
+            onChange={handleChange}
+            aria-label="settings tabs"
+            sx={{ borderRight: 1, borderColor: 'divider' }}
+          >
+            <Tab label="General" {...a11yProps(0)} />
+            <Tab label="Database" {...a11yProps(1)} />
+            <Tab label="Account" {...a11yProps(2)} />
+            <Tab label="Notifications" {...a11yProps(3)} />
+          </StyledTabs>
+        </Box>
         
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Developer Options
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-            
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.developerMode}
-                  onChange={handleChange}
-                  name="developerMode"
-                  color="primary"
-                />
-              }
-              label="Developer Mode"
-            />
-            
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                Developer mode enables additional debugging tools and uses localStorage for data persistence.
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+        <TabPanel value={value} index={0}>
+          <Typography variant="h5" gutterBottom>General Settings</Typography>
+          <Typography variant="body1" color="text.secondary">
+            Configure general application settings here.
+          </Typography>
+        </TabPanel>
+        
+        <TabPanel value={value} index={1}>
+          <DatabaseManagement />
+        </TabPanel>
+        
+        <TabPanel value={value} index={2}>
+          <Typography variant="h5" gutterBottom>Account Settings</Typography>
+          <Typography variant="body1" color="text.secondary">
+            Manage your account settings here.
+          </Typography>
+        </TabPanel>
+        
+        <TabPanel value={value} index={3}>
+          <Typography variant="h5" gutterBottom>Notification Settings</Typography>
+          <Typography variant="body1" color="text.secondary">
+            Configure notification preferences here.
+          </Typography>
+        </TabPanel>
+      </Paper>
     </Box>
   );
-} 
+};
+
+export default Settings; 

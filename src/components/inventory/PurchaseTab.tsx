@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -16,12 +16,14 @@ import {
   Typography,
   Alert,
   TablePagination,
-  Tooltip
+  Tooltip,
+  Autocomplete,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { Purchase, PurchaseFormState } from '../../models/inventoryTypes';
 import { useInventory } from '../../hooks/useInventory';
+import { useProducts } from '../../hooks/useProducts';
 
 interface PurchaseTabProps {
   purchases: Purchase[];
@@ -37,8 +39,11 @@ const StyledTableCell = styled(TableCell)(({ theme }) => ({
 
 const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }) => {
   const { createPurchase, isCreatingPurchase } = useInventory();
+  const { fetchProducts, createProduct } = useProducts();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [existingProducts, setExistingProducts] = useState<{id: string, name: string, hsn_code: string, units: string}[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [formState, setFormState] = useState<PurchaseFormState>({
     date: new Date().toISOString().split('T')[0],
     product_name: '',
@@ -49,8 +54,35 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
     mrp_incl_gst: 0,
     discount_on_purchase_percentage: 0,
     gst_percentage: 0,
+    purchase_taxable_value: 0,
+    purchase_igst: 0,
+    purchase_cgst: 0,
+    purchase_sgst: 0,
+    purchase_invoice_value_rs: 0,
   });
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof PurchaseFormState, string>>>({});
+
+  // Fetch existing products for autocomplete
+  useEffect(() => {
+    const loadProducts = async () => {
+      setIsLoadingProducts(true);
+      try {
+        const products = await fetchProducts();
+        setExistingProducts(products.map(p => ({
+          id: p.id,
+          name: p.name,
+          hsn_code: p.hsn_code || '',
+          units: p.units || ''
+        })));
+      } catch (error) {
+        console.error('Error loading products:', error);
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    };
+    
+    loadProducts();
+  }, [fetchProducts]);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -82,6 +114,17 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
     }
   };
 
+  const handleProductChange = (event: React.SyntheticEvent, product: {name: string, hsn_code: string, units: string} | null) => {
+    if (product) {
+      setFormState(prevState => ({
+        ...prevState,
+        product_name: product.name,
+        hsn_code: product.hsn_code,
+        units: product.units
+      }));
+    }
+  };
+
   const validateForm = (): boolean => {
     const errors: Partial<Record<keyof PurchaseFormState, string>> = {};
     
@@ -100,13 +143,61 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
     return Object.keys(errors).length === 0;
   };
 
+  // Check if product exists in product catalog
+  const productExists = (productName: string): boolean => {
+    return existingProducts.some(p => p.name.toLowerCase() === productName.toLowerCase());
+  };
+
+  // Function to add new product to product catalog
+  const addProductToCatalog = async (productData: {
+    name: string;
+    hsn_code: string;
+    units: string;
+    price: number;
+  }) => {
+    try {
+      await createProduct({
+        name: productData.name,
+        hsn_code: productData.hsn_code,
+        units: productData.units,
+        price: productData.price,
+        status: 'active',
+        stock: formState.purchase_qty,
+      });
+      
+      // Refresh products list
+      const products = await fetchProducts();
+      setExistingProducts(products.map(p => ({
+        id: p.id,
+        name: p.name,
+        hsn_code: p.hsn_code || '',
+        units: p.units || ''
+      })));
+    } catch (error) {
+      console.error('Error adding product to catalog:', error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) return;
     
     try {
+      // First check if product exists in product catalog
+      if (!productExists(formState.product_name)) {
+        // Add new product to catalog
+        await addProductToCatalog({
+          name: formState.product_name,
+          hsn_code: formState.hsn_code,
+          units: formState.units,
+          price: formState.mrp_incl_gst,
+        });
+      }
+      
+      // Create purchase record
       await createPurchase(formState);
+      
       // Reset form on success
       setFormState({
         date: new Date().toISOString().split('T')[0],
@@ -118,6 +209,11 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
         mrp_incl_gst: 0,
         discount_on_purchase_percentage: 0,
         gst_percentage: 0,
+        purchase_taxable_value: 0,
+        purchase_igst: 0,
+        purchase_cgst: 0,
+        purchase_sgst: 0,
+        purchase_invoice_value_rs: 0,
       });
     } catch (error) {
       console.error('Error creating purchase:', error);
@@ -136,7 +232,7 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Add New Purchase
+        Add New Purchase / Product
       </Typography>
       
       <Paper sx={{ p: 3, mb: 4 }}>
@@ -156,15 +252,33 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
             </Grid>
             
             <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                label="Product Name"
-                name="product_name"
-                value={formState.product_name}
-                onChange={handleInputChange}
-                fullWidth
-                margin="normal"
-                error={!!formErrors.product_name}
-                helperText={formErrors.product_name}
+              <Autocomplete
+                options={existingProducts}
+                getOptionLabel={(option) => option.name}
+                loading={isLoadingProducts}
+                onChange={handleProductChange}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Product Name"
+                    name="product_name"
+                    value={formState.product_name}
+                    onChange={handleInputChange}
+                    fullWidth
+                    margin="normal"
+                    error={!!formErrors.product_name}
+                    helperText={formErrors.product_name}
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {isLoadingProducts ? <CircularProgress color="inherit" size={20} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
               />
             </Grid>
             
@@ -263,98 +377,153 @@ const PurchaseTab: React.FC<PurchaseTabProps> = ({ purchases, isLoading, error }
               />
             </Grid>
             
+            {/* New GST-related fields */}
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Taxable Value (Rs.)"
+                name="purchase_taxable_value"
+                type="number"
+                value={formState.purchase_taxable_value}
+                onChange={handleInputChange}
+                fullWidth
+                margin="normal"
+                error={!!formErrors.purchase_taxable_value}
+                helperText={formErrors.purchase_taxable_value}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Purchase IGST (Rs.)"
+                name="purchase_igst"
+                type="number"
+                value={formState.purchase_igst}
+                onChange={handleInputChange}
+                fullWidth
+                margin="normal"
+                error={!!formErrors.purchase_igst}
+                helperText={formErrors.purchase_igst}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Purchase CGST (Rs.)"
+                name="purchase_cgst"
+                type="number"
+                value={formState.purchase_cgst}
+                onChange={handleInputChange}
+                fullWidth
+                margin="normal"
+                error={!!formErrors.purchase_cgst}
+                helperText={formErrors.purchase_cgst}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Purchase SGST (Rs.)"
+                name="purchase_sgst"
+                type="number"
+                value={formState.purchase_sgst}
+                onChange={handleInputChange}
+                fullWidth
+                margin="normal"
+                error={!!formErrors.purchase_sgst}
+                helperText={formErrors.purchase_sgst}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Purchase Invoice Value (Rs.)"
+                name="purchase_invoice_value_rs"
+                type="number"
+                value={formState.purchase_invoice_value_rs}
+                onChange={handleInputChange}
+                fullWidth
+                margin="normal"
+                error={!!formErrors.purchase_invoice_value_rs}
+                helperText={formErrors.purchase_invoice_value_rs}
+              />
+            </Grid>
+            
             <Grid item xs={12}>
               <Button
                 type="submit"
                 variant="contained"
                 color="primary"
-                startIcon={isCreatingPurchase ? <CircularProgress size={20} color="inherit" /> : <AddIcon />}
                 disabled={isCreatingPurchase}
+                startIcon={isCreatingPurchase ? <CircularProgress size={20} /> : <AddIcon />}
                 sx={{ mt: 2 }}
               >
-                Add Purchase
+                {isCreatingPurchase ? 'Adding...' : 'Add Purchase / Product'}
               </Button>
             </Grid>
           </Grid>
         </form>
       </Paper>
       
-      <Divider sx={{ my: 4 }} />
-      
-      <Typography variant="h6" gutterBottom>
-        Purchase Records
+      <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
+        Recent Purchases
       </Typography>
       
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          Error loading purchases: {error.message}
+          {error.message}
         </Alert>
       )}
       
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <CircularProgress />
         </Box>
+      ) : purchases.length === 0 ? (
+        <Alert severity="info">No purchase records found.</Alert>
       ) : (
-        <>
-          {purchases.length === 0 ? (
-            <Alert severity="info">No purchase records found.</Alert>
-          ) : (
-            <Paper>
-              <TableContainer component={Paper} sx={{ maxHeight: 440 }}>
-                <Table stickyHeader aria-label="purchases table">
-                  <TableHead>
-                    <TableRow>
-                      <StyledTableCell>Date</StyledTableCell>
-                      <StyledTableCell>Product Name</StyledTableCell>
-                      <StyledTableCell>HSN Code</StyledTableCell>
-                      <StyledTableCell>Units</StyledTableCell>
-                      <StyledTableCell>Invoice #</StyledTableCell>
-                      <StyledTableCell align="right">Qty</StyledTableCell>
-                      <StyledTableCell align="right">MRP (Incl. GST)</StyledTableCell>
-                      <StyledTableCell align="right">Discount %</StyledTableCell>
-                      <StyledTableCell align="right">GST %</StyledTableCell>
-                      <StyledTableCell align="right">Taxable Value</StyledTableCell>
-                      <StyledTableCell align="right">Total Value</StyledTableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {purchases
-                      .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                      .map((purchase) => (
-                        <TableRow 
-                          key={purchase.purchase_id} 
-                          hover
-                          sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                        >
-                          <TableCell>{formatDate(purchase.date)}</TableCell>
-                          <TableCell>{purchase.product_name}</TableCell>
-                          <TableCell>{purchase.hsn_code}</TableCell>
-                          <TableCell>{purchase.units}</TableCell>
-                          <TableCell>{purchase.purchase_invoice_number}</TableCell>
-                          <TableCell align="right">{purchase.purchase_qty}</TableCell>
-                          <TableCell align="right">₹{purchase.mrp_incl_gst?.toFixed(2)}</TableCell>
-                          <TableCell align="right">{purchase.discount_on_purchase_percentage}%</TableCell>
-                          <TableCell align="right">{purchase.gst_percentage}%</TableCell>
-                          <TableCell align="right">₹{purchase.purchase_taxable_value?.toFixed(2)}</TableCell>
-                          <TableCell align="right">₹{purchase.purchase_invoice_value_rs?.toFixed(2)}</TableCell>
-                        </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <TablePagination
-                rowsPerPageOptions={[5, 10, 25, 50]}
-                component="div"
-                count={purchases.length}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-              />
-            </Paper>
-          )}
-        </>
+        <TableContainer component={Paper}>
+          <Table sx={{ minWidth: 700 }} aria-label="purchases table">
+            <TableHead>
+              <TableRow>
+                <StyledTableCell>Date</StyledTableCell>
+                <StyledTableCell>Invoice #</StyledTableCell>
+                <StyledTableCell>Product Name</StyledTableCell>
+                <StyledTableCell>HSN Code</StyledTableCell>
+                <StyledTableCell>Units</StyledTableCell>
+                <StyledTableCell align="right">Qty</StyledTableCell>
+                <StyledTableCell align="right">MRP (Incl. GST)</StyledTableCell>
+                <StyledTableCell align="right">GST %</StyledTableCell>
+                <StyledTableCell align="right">Discount %</StyledTableCell>
+                <StyledTableCell align="right">Invoice Value</StyledTableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {purchases.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((purchase) => (
+                <TableRow key={purchase.purchase_id}>
+                  <TableCell>{formatDate(purchase.date)}</TableCell>
+                  <TableCell>{purchase.purchase_invoice_number}</TableCell>
+                  <TableCell>{purchase.product_name}</TableCell>
+                  <TableCell>{purchase.hsn_code}</TableCell>
+                  <TableCell>{purchase.units}</TableCell>
+                  <TableCell align="right">{purchase.purchase_qty}</TableCell>
+                  <TableCell align="right">₹{purchase.mrp_incl_gst?.toFixed(2)}</TableCell>
+                  <TableCell align="right">{purchase.gst_percentage}%</TableCell>
+                  <TableCell align="right">{purchase.discount_on_purchase_percentage}%</TableCell>
+                  <TableCell align="right">₹{purchase.purchase_invoice_value_rs?.toFixed(2)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={purchases.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
+        </TableContainer>
       )}
     </Box>
   );

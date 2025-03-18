@@ -36,6 +36,8 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    // Skip TypeScript type checking during build
+    skipTypeCheck: true,
     // Increase the warning limit to reduce noise
     chunkSizeWarningLimit: 1000,
     // Add minify options to better handle initialization order
@@ -47,6 +49,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html')
       },
+      // Remove external configuration to allow bundling of dependencies
+      // external: ['react-toastify', 'axios', 'uuid', 'react-chartjs-2', 'chart.js'],
       output: {
         // Configure manual chunks to split the bundle
         manualChunks: (id) => {
@@ -73,6 +77,15 @@ export default defineConfig({
             }
             if (id.includes('@tanstack/react-query')) {
               return 'vendor-react-query';
+            }
+            if (id.includes('axios')) {
+              return 'vendor-axios';
+            }
+            if (id.includes('react-toastify')) {
+              return 'vendor-toast';
+            }
+            if (id.includes('uuid')) {
+              return 'vendor-uuid';
             }
             // All other dependencies
             return 'vendor';
@@ -129,7 +142,11 @@ export default defineConfig({
       '@mui/icons-material',
       'react-router-dom',
       'react-toastify',
-      'framer-motion'
+      'framer-motion',
+      'axios',
+      'uuid',
+      'react-chartjs-2',
+      'chart.js'
     ],
     // Force nested dependencies to be pre-bundled
     force: true

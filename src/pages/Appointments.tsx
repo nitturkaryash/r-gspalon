@@ -19,16 +19,17 @@ import {
   Alert,
   CircularProgress,
   InputAdornment,
+  Autocomplete,
+  Tooltip,
 } from '@mui/material'
-import { useAppointments } from '../hooks/useAppointments'
-import { useStylists, Stylist, StylistBreak } from '../hooks/useStylists'
-import { useServices, Service } from '../hooks/useServices'
-import { useServiceCollections } from '../hooks/useServiceCollections'
-import { useCollectionServices } from '../hooks/useCollectionServices'
+import { useDexieAppointments } from '../hooks/useDexieAppointments'
+import { useDexieStylists } from '../hooks/useDexieStylists'
+import { useDexieServices } from '../hooks/useDexieServices'
+import { useDexieServiceCollections } from '../hooks/useDexieServiceCollections'
 import { ServiceItem } from '../models/serviceTypes'
 import { format, addDays, subDays } from 'date-fns'
 import StylistDayView, { Break } from '../components/StylistDayView'
-import { Search as SearchIcon } from '@mui/icons-material'
+import { Search as SearchIcon, SyncProblem as SyncProblemIcon } from '@mui/icons-material'
 import { formatCurrency } from '../utils/format'
 import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
@@ -37,6 +38,10 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import { DateSelectArg, EventClickArg } from '@fullcalendar/core'
+import { useDexieClients } from '../hooks/useDexieClients'
+import React from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ShoppingCart as ShoppingCartIcon } from '@mui/icons-material'
 
 interface BookingFormData {
   clientName: string;
@@ -46,6 +51,21 @@ interface BookingFormData {
   endTime: string;
   notes?: string;
   mobileNumber?: string;
+}
+
+interface Appointment {
+  id: string;
+  stylist_id: string;
+  service_id: string;
+  client_id?: string; // Add optional client_id
+  client_name: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  notes?: string;
+  mobile_number?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // Generate time options for select dropdown
@@ -81,15 +101,29 @@ export default function Appointments() {
 
   const timeOptions = generateTimeOptions();
 
-  const { appointments, isLoading: loadingAppointments, updateAppointment, createAppointment, deleteAppointment } = useAppointments()
-  const { services, isLoading: loadingServices } = useServices()
-  const { stylists, isLoading: loadingStylists, updateStylist } = useStylists()
+  const { appointments, isLoading: loadingAppointments, updateAppointment, createAppointment, deleteAppointment } = useDexieAppointments()
+  const { services, isLoading: loadingServices } = useDexieServices()
+  const { stylists, isLoading: loadingStylists, updateStylist } = useDexieStylists()
 
   // Add state for service filtering
-  const { serviceCollections } = useServiceCollections();
-  const { services: collectionServices, isLoading: isLoadingCollectionServices } = useCollectionServices();
+  const { serviceCollections } = useDexieServiceCollections();
   const [selectedServiceCollection, setSelectedServiceCollection] = useState<string>('');
   const [serviceSearchQuery, setServiceSearchQuery] = useState<string>('');
+
+  // Get services for the selected collection
+  const collectionServices = selectedServiceCollection ? 
+    useDexieServiceCollections().getServicesForCollection(selectedServiceCollection) : 
+    null;
+
+  const { clients, searchClients, upsertClient, isLoading: isClientLoading } = useDexieClients();
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [selectedClient, setSelectedClient] = useState<any>(null);
+  const [isNewClient, setIsNewClient] = useState(false);
+
+  // Add a new state for client appointments
+  const [clientAppointments, setClientAppointments] = useState<any[]>([]);
+
+  const navigate = useNavigate();
 
   const handleSelect = (selectInfo: DateSelectArg) => {
     console.log('Selected slot:', selectInfo);
@@ -149,6 +183,75 @@ export default function Appointments() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'error' | 'warning' | 'info' | 'success'>('error');
 
+  const handleClientSelect = (event: any, newValue: any) => {
+    if (newValue && newValue.inputValue) {
+      // Handle creating a new client
+      setIsNewClient(true);
+      setSelectedClient(null);
+      setClientAppointments([]); // Clear previous appointments
+      setFormData({
+        ...formData,
+        clientName: newValue.inputValue,
+        mobileNumber: '',
+      });
+    } else {
+      setIsNewClient(false);
+      setSelectedClient(newValue);
+      if (newValue) {
+        console.log('Selected client:', newValue);
+        setFormData({
+          ...formData,
+          clientName: newValue.name,
+          mobileNumber: newValue.mobile_number || '',
+        });
+        
+        // Fetch client's previous appointments
+        fetchClientAppointments(newValue.id);
+      } else {
+        // Clear client related fields when no client is selected
+        setClientAppointments([]);
+        setFormData({
+          ...formData,
+          clientName: '',
+          mobileNumber: '',
+        });
+      }
+    }
+  };
+
+  // Function to fetch client appointments
+  const fetchClientAppointments = async (clientId: string) => {
+    try {
+      // Get appointments with the client ID
+      const allAppointments = appointments || [];
+      const clientAppts = allAppointments.filter(
+        appointment => appointment.client_id === clientId
+      );
+      
+      // Sort by date, most recent first
+      clientAppts.sort((a, b) => 
+        new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+      );
+      
+      // Get service details for each appointment
+      const appointmentsWithDetails = await Promise.all(
+        clientAppts.map(async (appt) => {
+          const service = services?.find(s => String(s.id) === String(appt.service_id));
+          const stylist = stylists?.find(s => String(s.id) === String(appt.stylist_id));
+          return {
+            ...appt,
+            serviceName: service?.name || 'Unknown service',
+            stylistName: stylist?.name || 'Unknown stylist',
+          };
+        })
+      );
+      
+      setClientAppointments(appointmentsWithDetails);
+    } catch (error) {
+      console.error('Error fetching client appointments:', error);
+    }
+  };
+
   const handleBookingSubmit = async () => {
     if (!selectedSlot || !formData.serviceId || !formData.clientName) {
       setSnackbarMessage('Please fill in all required fields');
@@ -157,18 +260,58 @@ export default function Appointments() {
       return;
     }
 
-    // Use either the selected stylist from day view or the one from the form
-    const stylistId = selectedStylistId || formData.stylistId;
-    if (!stylistId) {
-      setSnackbarMessage('Please select a stylist');
-      setSnackbarSeverity('error');
-      setSnackbarOpen(true);
-      return;
-    }
-
     try {
-      const selectedService = services?.find(s => s.id === formData.serviceId);
-      if (!selectedService) throw new Error('Service not found');
+      // Handle client creation/update with POS sync
+      let clientId;
+      if (isNewClient) {
+        console.log('Creating new client:', formData.clientName);
+        try {
+          const newClient = await upsertClient({
+            name: formData.clientName,
+            mobile_number: formData.mobileNumber,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          clientId = newClient.id;
+          console.log('New client created with ID:', clientId);
+        } catch (clientError) {
+          console.error('Failed to create client:', clientError);
+          setSnackbarMessage(`Failed to create client: ${clientError instanceof Error ? clientError.message : 'Unknown error'}`);
+          setSnackbarSeverity('error');
+          setSnackbarOpen(true);
+          return;
+        }
+      } else if (selectedClient) {
+        clientId = selectedClient.id;
+        console.log('Using existing client ID:', clientId);
+      }
+
+      // Use either the selected stylist from day view or the one from the form
+      const stylistId = selectedStylistId || formData.stylistId;
+      if (!stylistId) {
+        setSnackbarMessage('Please select a stylist');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+        return;
+      }
+
+      // Debug service selection
+      console.log('Available services:', services);
+      console.log('Selected service ID:', formData.serviceId);
+      
+      // Always convert IDs to string for comparison to fix type mismatches
+      const selectedService = services?.find(s => String(s.id) === String(formData.serviceId));
+      
+      if (!selectedService) {
+        // Better error handling
+        console.error('Service not found. Selected ID:', formData.serviceId);
+        console.error('Available service IDs:', services?.map(s => s.id));
+        
+        setSnackbarMessage('Service not found. Please select a service again.');
+        setSnackbarSeverity('error');
+        setSnackbarOpen(true);
+        return;
+      }
 
       // Parse the selected times
       const [startHour, startMinute] = formData.startTime.split(':').map(Number);
@@ -214,15 +357,22 @@ export default function Appointments() {
         }
       }
 
-      await createAppointment({
+      // Always include clientId in the appointment creation
+      const appointmentData = {
         stylist_id: stylistId,
         service_id: formData.serviceId,
+        client_id: clientId,
         client_name: formData.clientName,
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
         status: 'scheduled',
-        notes: formData.notes
-      });
+        notes: formData.notes,
+        mobile_number: formData.mobileNumber
+      };
+
+      console.log('Creating appointment with data:', appointmentData);
+      
+      await createAppointment(appointmentData);
 
       setSelectedSlot(null);
       setSelectedStylistId(null);
@@ -240,7 +390,7 @@ export default function Appointments() {
       setSnackbarOpen(true);
     } catch (error) {
       console.error('Failed to book appointment:', error);
-      setSnackbarMessage('Failed to book appointment');
+      setSnackbarMessage(`Failed to book appointment: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setSnackbarSeverity('error');
       setSnackbarOpen(true);
     }
@@ -253,20 +403,11 @@ export default function Appointments() {
   // Add a function to filter services based on collection and search query
   const getFilteredServices = () => {
     // Use collectionServices if available, otherwise fall back to services
-    const allServices = collectionServices || services || [];
+    const allServices = (selectedServiceCollection && collectionServices) ? collectionServices : services || [];
+    
+    console.log('Filtering services from:', allServices);
     
     let filteredServices = [...allServices];
-    
-    // Filter by collection if one is selected
-    if (selectedServiceCollection) {
-      filteredServices = filteredServices.filter(service => {
-        // Check if service is from collection services (which has collection_id)
-        if ('collection_id' in service) {
-          return service.collection_id === selectedServiceCollection;
-        }
-        return false;
-      });
-    }
     
     // Filter by search query if one is entered
     if (serviceSearchQuery) {
@@ -277,6 +418,7 @@ export default function Appointments() {
       );
     }
     
+    console.log('Filtered services result:', filteredServices);
     return filteredServices;
   };
 
@@ -284,9 +426,10 @@ export default function Appointments() {
   const handleAddBreak = async (stylistId: string, breakData: Omit<Break, 'id'>) => {
     try {
       // Create a new break with a unique ID
-      const newBreak: StylistBreak = {
-        id: uuidv4(),
-        ...breakData
+      const newBreak = {
+        startTime: breakData.startTime,
+        endTime: breakData.endTime,
+        reason: breakData.reason || ''
       };
       
       // Find the stylist to update
@@ -303,12 +446,11 @@ export default function Appointments() {
         return;
       }
       
-      // Update the stylist's breaks
-      const updatedBreaks = [...(stylist.breaks || []), newBreak];
-      const updatedStylist = { ...stylist, breaks: updatedBreaks };
-      
-      // Update the stylist in the database
-      await updateStylist(updatedStylist);
+      // Use the addBreak function from the Dexie hook
+      await updateStylist({
+        id: stylistId,
+        breaks: [...(stylist.breaks || []), { ...newBreak, id: uuidv4() }]
+      });
       
       toast.success('Break added successfully');
     } catch (error) {
@@ -318,10 +460,10 @@ export default function Appointments() {
   };
 
   // Convert stylists to the expected format for StylistDayView
-  const convertStylists = (stylists: Stylist[]): any[] => {
+  const convertStylists = (stylists: any[]): any[] => {
     return stylists.map(stylist => ({
       ...stylist,
-      breaks: (stylist.breaks || []).map(breakItem => ({
+      breaks: (stylist.breaks || []).map((breakItem: any) => ({
         ...breakItem,
         // Ensure all required properties for Break type are present
         id: breakItem.id,
@@ -330,6 +472,13 @@ export default function Appointments() {
         reason: breakItem.reason || ''
       }))
     }));
+  };
+
+  // Add a function to navigate to POS with selected client
+  const handleGoToPOS = () => {
+    if (selectedClient) {
+      navigate('/pos', { state: { selectedClient } });
+    }
   };
 
   if (loadingAppointments || loadingServices || loadingStylists) {
@@ -389,28 +538,107 @@ export default function Appointments() {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
-              <TextField
-                label="Client Name"
-                value={formData.clientName}
-                onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
+              <Autocomplete
                 fullWidth
-                required
+                freeSolo
+                loading={isClientLoading}
+                options={searchClients(clientSearchQuery) || []}
+                getOptionLabel={(option) => {
+                  if (typeof option === 'string') {
+                    return option;
+                  }
+                  if (option && option.inputValue) {
+                    return option.inputValue;
+                  }
+                  if (option && option.name) {
+                    return option.name;
+                  }
+                  return '';
+                }}
+                value={selectedClient}
+                onChange={handleClientSelect}
+                onInputChange={(event, newInputValue) => {
+                  setClientSearchQuery(newInputValue);
+                  if (!selectedClient && newInputValue) {
+                    // For free-solo mode, update client name as they type
+                    setFormData({
+                      ...formData,
+                      clientName: newInputValue
+                    });
+                  }
+                }}
+                filterOptions={(options, params) => {
+                  const filtered = options.filter(option => 
+                    option.name.toLowerCase().includes(params.inputValue.toLowerCase()) ||
+                    (option.mobile_number && option.mobile_number.includes(params.inputValue))
+                  );
+                  
+                  // Add a "create new" option if there's input and no exact match
+                  if (params.inputValue !== '' && !filtered.some(option => option.name.toLowerCase() === params.inputValue.toLowerCase())) {
+                    filtered.push({
+                      inputValue: params.inputValue,
+                      name: `Create "${params.inputValue}"`,
+                      id: 'new'
+                    });
+                  }
+                  
+                  return filtered;
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Client Name"
+                    required
+                    variant="outlined"
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <React.Fragment>
+                          {isClientLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                          {params.InputProps.endAdornment}
+                        </React.Fragment>
+                      ),
+                    }}
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Grid container alignItems="center">
+                      <Grid item xs>
+                        {option.inputValue ? (
+                          <Typography variant="body1" color="primary">
+                            {option.name}
+                          </Typography>
+                        ) : (
+                          <>
+                            <Typography variant="body1">{option.name}</Typography>
+                            {option.mobile_number && (
+                              <Typography variant="body2" color="text.secondary">
+                                {option.mobile_number}
+                              </Typography>
+                            )}
+                          </>
+                        )}
+                      </Grid>
+                      {option.sync_failed && (
+                        <Grid item>
+                          <Tooltip title="POS sync pending">
+                            <SyncProblemIcon color="warning" />
+                          </Tooltip>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </li>
+                )}
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Mobile Number"
-                value={formData.mobileNumber || ''}
-                onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
                 fullWidth
-                placeholder="Enter client's mobile number"
-                InputProps={{
-                  startAdornment: (
-                    <Box component="span" sx={{ color: 'text.secondary', mr: 1 }}>
-                      +
-                    </Box>
-                  ),
-                }}
+                label="Mobile Number"
+                variant="outlined"
+                value={formData.mobileNumber}
+                onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
               />
             </Grid>
             <Grid item xs={12}>
@@ -484,26 +712,29 @@ export default function Appointments() {
                     getFilteredServices().map((service) => (
                       <Grid item xs={12} sm={6} key={service.id}>
                         <Paper 
-                          elevation={formData.serviceId === service.id ? 4 : 1}
+                          elevation={formData.serviceId === String(service.id) ? 4 : 1}
                           sx={{ 
                             p: 1.5, 
                             cursor: 'pointer',
                             transition: 'all 0.2s',
-                            border: formData.serviceId === service.id ? '2px solid' : '1px solid',
-                            borderColor: formData.serviceId === service.id ? 'primary.main' : 'divider',
-                            bgcolor: formData.serviceId === service.id ? 'rgba(25, 118, 210, 0.12)' : 'background.paper',
-                            transform: formData.serviceId === service.id ? 'translateY(-3px)' : 'none',
-                            boxShadow: formData.serviceId === service.id ? 3 : 1,
+                            border: formData.serviceId === String(service.id) ? '2px solid' : '1px solid',
+                            borderColor: formData.serviceId === String(service.id) ? 'primary.main' : 'divider',
+                            bgcolor: formData.serviceId === String(service.id) ? 'rgba(25, 118, 210, 0.12)' : 'background.paper',
+                            transform: formData.serviceId === String(service.id) ? 'translateY(-3px)' : 'none',
+                            boxShadow: formData.serviceId === String(service.id) ? 3 : 1,
                             '&:hover': {
-                              bgcolor: formData.serviceId === service.id ? 'rgba(25, 118, 210, 0.12)' : 'action.hover',
+                              bgcolor: formData.serviceId === String(service.id) ? 'rgba(25, 118, 210, 0.12)' : 'action.hover',
                               transform: 'translateY(-2px)',
                               boxShadow: 2
                             }
                           }}
-                          onClick={() => setFormData({ ...formData, serviceId: service.id })}
+                          onClick={() => {
+                            console.log('Selecting service with ID:', service.id, 'Type:', typeof service.id);
+                            setFormData({ ...formData, serviceId: String(service.id) });
+                          }}
                         >
-                          <Typography variant="subtitle1" fontWeight={formData.serviceId === service.id ? "bold" : "medium"} color={formData.serviceId === service.id ? "primary.main" : "text.primary"}>
-                            {formData.serviceId === service.id && "✓ "}{service.name}
+                          <Typography variant="subtitle1" fontWeight={formData.serviceId === String(service.id) ? "bold" : "medium"} color={formData.serviceId === String(service.id) ? "primary.main" : "text.primary"}>
+                            {formData.serviceId === String(service.id) && "✓ "}{service.name}
                           </Typography>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                             <Typography variant="body2" color="text.secondary">
@@ -573,6 +804,71 @@ export default function Appointments() {
                 fullWidth
               />
             </Grid>
+            {selectedClient && clientAppointments.length > 0 && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, mt: 2, bgcolor: 'background.default' }}>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                    Previous Appointments
+                  </Typography>
+                  <Box sx={{ maxHeight: '150px', overflow: 'auto' }}>
+                    {clientAppointments.slice(0, 3).map((appt) => (
+                      <Box 
+                        key={appt.id}
+                        sx={{ 
+                          p: 1, 
+                          mb: 1, 
+                          borderRadius: 1,
+                          bgcolor: 'background.paper',
+                          border: '1px solid',
+                          borderColor: 'divider'
+                        }}
+                      >
+                        <Grid container spacing={1}>
+                          <Grid item xs={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              {new Date(appt.start_time).toLocaleDateString()}
+                            </Typography>
+                            <Typography variant="body2" fontWeight="medium">
+                              {appt.serviceName}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                            <Typography variant="body2" color="text.secondary">
+                              with {appt.stylistName}
+                            </Typography>
+                            <Typography variant="caption" 
+                              sx={{ 
+                                color: appt.status === 'completed' ? 'success.main' : 
+                                       appt.status === 'cancelled' ? 'error.main' : 'info.main',
+                                fontWeight: 'medium'
+                              }}
+                            >
+                              {appt.status.toUpperCase()}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))}
+                    {clientAppointments.length > 3 && (
+                      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
+                        + {clientAppointments.length - 3} more appointments
+                      </Typography>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            )}
+            {selectedClient && (
+              <Button 
+                variant="outlined" 
+                color="primary"
+                startIcon={<ShoppingCartIcon />} 
+                onClick={handleGoToPOS}
+                sx={{ mt: 2 }}
+              >
+                Go to POS with this client
+              </Button>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions>

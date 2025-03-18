@@ -109,9 +109,14 @@ export interface PurchaseFormState {
   purchase_invoice_number: string;
   purchase_qty: number;
   mrp_incl_gst: number;
-  mrp_excl_gst: number;
+  mrp_excl_gst?: number;
   discount_on_purchase_percentage: number;
   gst_percentage: number;
+  purchase_taxable_value?: number;
+  purchase_igst?: number;
+  purchase_cgst?: number;
+  purchase_sgst?: number;
+  purchase_invoice_value_rs?: number;
 }
 
 // Stats for processing inventory data

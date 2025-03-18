@@ -33,7 +33,7 @@ declare namespace gapi {
           resource: any;
         }): Promise<{ result: any }>;
 
-        function delete(params: {
+        function deleteEvent(params: {
           calendarId: string;
           eventId: string;
         }): Promise<void>;

@@ -4,7 +4,7 @@ import { Container, Paper } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { GetApp as DownloadIcon } from '@mui/icons-material';
 import { useInventory } from '../hooks/useInventory';
-import PurchaseTab from '../components/inventory/PurchaseTab';
+import PurchaseTab from '../components/inventory/PurchaseTab.jsx';
 import SalesTab from '../components/inventory/SalesTab';
 import ConsumptionTab from '../components/inventory/ConsumptionTab';
 import { downloadCsv } from '../utils/csvExporter';

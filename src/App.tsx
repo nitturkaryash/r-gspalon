@@ -18,16 +18,14 @@ import Settings from './pages/Settings';
 import LocalDataTest from './pages/LocalDataTest';
 import DatabaseCheck from './pages/DatabaseCheck';
 import { initLocalStorageData } from './utils/initLocalStorageData';
+import TestImports from './TestImports';
+import { DatabaseProvider } from './context/DatabaseProvider';
 
 // Lazy load components
 const ServiceCollections = lazy(() => import('./pages/ServiceCollections'));
 const ServiceCollectionDetail = lazy(() => import('./pages/ServiceCollectionDetail'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const InventorySetup = lazy(() => import('./pages/InventorySetup'));
-const ProductCollections = lazy(() => import('./pages/ProductCollections'));
-const ProductCollectionDetail = lazy(() => import('./pages/ProductCollectionDetail'));
-const ProductSetup = lazy(() => import('./pages/ProductSetup'));
-const Products = lazy(() => import('./pages/Products'));
 const POS = lazy(() => import('./pages/POS'));
 const Members = lazy(() => import('./pages/Members'));
 
@@ -151,41 +149,40 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <ToastContainer position="top-right" theme="dark" />
-        <AuthProvider>
+      <ToastContainer position="top-right" theme="dark" />
+      <TestImports />
+      <AuthProvider>
+        <DatabaseProvider>
           <ErrorBoundary>
             <Suspense fallback={<LoadingFallback />}>
-              <Routes>
-                {/* In development mode, redirect login to auto-login */}
-                <Route path="/login" element={DEVELOPMENT_MODE ? <DevModeRedirect /> : <Login />} />
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="dashboard" element={<Dashboard />} />
-                  <Route path="orders" element={<Orders />} />
-                  <Route path="services" element={<Services />} />
-                  <Route path="services/:id" element={<ServiceCollectionDetail />} />
-                  <Route path="stylists" element={<Stylists />} />
-                  <Route path="clients" element={<Clients />} />
-                  <Route path="appointments" element={<Appointments />} />
-                  <Route path="inventory" element={<Inventory />} />
-                  <Route path="inventory-setup" element={<InventorySetup />} />
-                  <Route path="products" element={<Products />} />
-                  <Route path="product-collections" element={<ProductCollections />} />
-                  <Route path="products/:id" element={<ProductCollectionDetail />} />
-                  <Route path="products-setup" element={<ProductSetup />} />
-                  <Route path="pos" element={<POS />} />
-                  <Route path="members" element={<Members />} />
-                  <Route path="database-check" element={<DatabaseCheck />} />
-                  <Route path="local-data" element={<LocalDataTest />} />
-                  <Route path="settings" element={<Settings />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
+              <Router>
+                <Routes>
+                  {/* In development mode, redirect login to auto-login */}
+                  <Route path="/login" element={DEVELOPMENT_MODE ? <DevModeRedirect /> : <Login />} />
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="dashboard" element={<Dashboard />} />
+                    <Route path="orders" element={<Orders />} />
+                    <Route path="services" element={<Services />} />
+                    <Route path="services/:id" element={<ServiceCollectionDetail />} />
+                    <Route path="stylists" element={<Stylists />} />
+                    <Route path="clients" element={<Clients />} />
+                    <Route path="appointments" element={<Appointments />} />
+                    <Route path="inventory" element={<Inventory />} />
+                    <Route path="inventory-setup" element={<InventorySetup />} />
+                    <Route path="pos" element={<POS />} />
+                    <Route path="members" element={<Members />} />
+                    <Route path="database-check" element={<DatabaseCheck />} />
+                    <Route path="local-data" element={<LocalDataTest />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+              </Router>
             </Suspense>
           </ErrorBoundary>
-        </AuthProvider>
-      </Router>
+        </DatabaseProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

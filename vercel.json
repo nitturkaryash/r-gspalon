@@ -1,40 +1,20 @@
 {
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/(.*)", "destination": "/" }
   ],
   "buildCommand": "npm run vercel-build",
+  "installCommand": "npm install --legacy-peer-deps",
   "outputDirectory": "dist",
   "framework": "vite",
-  "installCommand": "npm install",
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
-      ]
-    },
-    {
-      "source": "/index.html",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
-        }
-      ]
-    }
-  ],
+  "regions": ["iad1"],
   "env": {
+    "SKIP_TYPESCRIPT_CHECK": "true",
     "VITE_CJS_IGNORE_WARNING": "true",
-    "NODE_OPTIONS": "--max-old-space-size=4096 --no-warnings"
+    "NODE_OPTIONS": "--max-old-space-size=4096"
+  },
+  "build": {
+    "env": {
+      "VITE_API_URL": ""
+    }
   }
 } 

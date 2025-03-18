@@ -44,13 +44,27 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
+// Define styled components first to ensure they're available
+// ScheduleGrid component for the appointment grid layout
+const ScheduleGrid = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'row',
+  flexGrow: 1,
+  overflow: 'auto',
+  position: 'relative',
+  backgroundColor: theme.palette.background.default,
+}));
+
 // Custom implementations of date-fns functions
 const formatTime = (time: string | Date): string => {
   const date = typeof time === 'string' ? new Date(time) : time;
   const hour = date.getHours();
-  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  const period = hour >= 12 ? 'PM' : 'AM';
-  return `${hour12}:00 ${period}`;
+  const minute = date.getMinutes();
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  const minuteStr = minute < 10 ? `0${minute}` : minute;
+  
+  return `${hour12}:${minuteStr} ${ampm}`;
 };
 
 // Improved time formatting with options for 12-hour or 24-hour format
@@ -349,6 +363,10 @@ const StylistDayView: React.FC<StylistDayViewProps> = ({
     endTime: '',
     reason: ''
   });
+  // Add missing state variables
+  const [expandedAppointment, setExpandedAppointment] = useState<string | null>(null);
+  const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   // Update the editFormData state type
   const [editFormData, setEditFormData] = useState({
     clientName: '',

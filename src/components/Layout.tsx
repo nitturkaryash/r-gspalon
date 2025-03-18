@@ -64,8 +64,6 @@ const menuLinks: MenuLink[] = [
   { text: 'Appointments', path: '/appointments', icon: <CalendarMonth /> },
   { text: 'Clients', path: '/clients', icon: <People /> },
   { text: 'Services', path: '/services', icon: <Category /> },
-  { text: 'Products', path: '/products', icon: <Spa /> },
-  { text: 'Product Setup', path: '/products-setup', icon: <Settings /> },
   { text: 'Stylists', path: '/stylists', icon: <Person /> },
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
