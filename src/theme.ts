@@ -23,12 +23,58 @@ declare module '@mui/material/styles' {
   }
 }
 
-// Modern salon theme with off-white and olive green
-export const theme = createTheme({
-  // Add global border radius settings
+// Base theme with shared settings
+const baseTheme = {
   shape: {
     borderRadius: 16, // Increase default border radius
   },
+  typography: {
+    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    h1: {
+      fontWeight: 700,
+      fontSize: '2.5rem',
+      letterSpacing: '-0.02em',
+      lineHeight: 1.2,
+    },
+    h2: {
+      fontWeight: 600,
+      fontSize: '2rem',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.3,
+    },
+    h3: {
+      fontWeight: 600,
+      fontSize: '1.5rem',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.4,
+    },
+    h6: {
+      fontWeight: 600,
+      fontSize: '1.125rem',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.4,
+    },
+    body1: {
+      fontSize: '1rem',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.5,
+    },
+    body2: {
+      fontSize: '0.875rem',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.5,
+    },
+    button: {
+      textTransform: 'none' as const,
+      fontWeight: 500,
+      letterSpacing: '-0.01em',
+    },
+  },
+};
+
+// Light theme (original)
+export const lightTheme = createTheme({
+  ...baseTheme,
   palette: {
     mode: 'light',
     primary: {
@@ -60,49 +106,6 @@ export const theme = createTheme({
       accent: '#D2B48C',     // Tan accent
     },
     divider: 'rgba(0, 0, 0, 0.12)',
-  },
-  typography: {
-    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    h1: {
-      fontWeight: 700,
-      fontSize: '2.5rem',
-      letterSpacing: '-0.02em',
-      lineHeight: 1.2,
-      color: '#566E1C', // Dark olive for headings
-    },
-    h2: {
-      fontWeight: 600,
-      fontSize: '2rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.3,
-    },
-    h3: {
-      fontWeight: 600,
-      fontSize: '1.5rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.4,
-    },
-    h6: {
-      fontWeight: 600,
-      fontSize: '1.125rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.4,
-    },
-    body1: {
-      fontSize: '1rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.5,
-    },
-    body2: {
-      fontSize: '0.875rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.5,
-    },
-    button: {
-      textTransform: 'none',
-      fontWeight: 500,
-      letterSpacing: '-0.01em',
-    },
   },
   components: {
     MuiCssBaseline: {
@@ -219,7 +222,6 @@ export const theme = createTheme({
         },
       },
     },
-    // Make dialogs more rounded
     MuiDialog: {
       styleOverrides: {
         paper: {
@@ -229,7 +231,6 @@ export const theme = createTheme({
         },
       },
     },
-    // Round chips more
     MuiChip: {
       styleOverrides: {
         root: {
@@ -238,96 +239,206 @@ export const theme = createTheme({
         },
       },
     },
-    // Appointment components styling
     MuiAppBar: {
       styleOverrides: {
         root: {
           backgroundColor: '#FFFFFF',
           color: '#333333',
           boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.05)',
-          borderRadius: 0, // App bars should remain non-rounded
-        },
-      },
-    },
-    MuiToggleButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 12, // Rounded toggle buttons
-          color: '#666666',
-          transition: 'all 0.2s ease',
-          '&.Mui-selected': {
-            backgroundColor: 'rgba(107, 142, 35, 0.1)',
-            color: '#6B8E23',
-          },
-        },
-      },
-    },
-    MuiDialogTitle: {
-      styleOverrides: {
-        root: {
-          color: '#566E1C',
-          padding: '24px 24px 16px',
-        },
-      },
-    },
-    MuiDialogContent: {
-      styleOverrides: {
-        root: {
-          padding: '16px 24px 24px',
-        },
-      },
-    },
-    // Make avatars more rounded
-    MuiAvatar: {
-      styleOverrides: {
-        root: {
-          borderRadius: '40%', // Not completely round, but more oval
-          boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.08)',
-        },
-      },
-    },
-    // Style form labels
-    MuiFormLabel: {
-      styleOverrides: {
-        root: {
-          color: 'rgba(86, 110, 28, 0.7)',
-          '&.Mui-focused': {
-            color: '#6B8E23',
-          },
-        },
-      },
-    },
-    // Style checkboxes and radio buttons
-    MuiCheckbox: {
-      styleOverrides: {
-        root: {
-          color: 'rgba(107, 142, 35, 0.5)',
-          '&.Mui-checked': {
-            color: '#6B8E23',
-          },
-        },
-      },
-    },
-    MuiRadio: {
-      styleOverrides: {
-        root: {
-          color: 'rgba(107, 142, 35, 0.5)',
-          '&.Mui-checked': {
-            color: '#6B8E23',
-          },
-        },
-      },
-    },
-    // Style tooltips
-    MuiTooltip: {
-      styleOverrides: {
-        tooltip: {
-          backgroundColor: 'rgba(86, 110, 28, 0.9)',
-          borderRadius: 12,
-          padding: '8px 12px',
-          fontSize: '0.75rem',
+          borderRadius: 0,
         },
       },
     },
   },
-}); 
+});
+
+// Dark theme
+export const darkTheme = createTheme({
+  ...baseTheme,
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#8FB03E', // Lighter olive for dark mode
+      light: '#9FBF5F',
+      dark: '#6B8E23',
+      contrastText: '#FFFFFF',
+    },
+    secondary: {
+      main: '#E6D5B8', // Lighter tan for dark mode
+      light: '#F1E7D6',
+      dark: '#D2B48C',
+      contrastText: '#333333',
+    },
+    background: {
+      default: '#121212', // Dark background
+      paper: '#1A1A1A',    // Even darker for paper elements (was #1E1E1E)
+    },
+    text: {
+      primary: '#E0E0E0',  // Light gray for primary text
+      secondary: '#AAAAAA', // Medium light gray for secondary text
+    },
+    salon: {
+      olive: '#8FB03E',     // Lighter olive for dark mode
+      oliveLight: '#A6C261', // Even lighter olive
+      oliveDark: '#6B8E23',  // Original olive (appears darker in dark mode)
+      offWhite: '#1A1A1A',   // Dark mode paper background
+      cream: '#332F28',      // Dark cream equivalent
+      accent: '#E6D5B8',     // Lighter tan for dark mode
+    },
+    divider: 'rgba(255, 255, 255, 0.08)',
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: {
+          backgroundColor: '#121212',
+          color: '#E0E0E0',
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1A1A1A',
+          backgroundImage: 'none',
+          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.5)',
+          borderRadius: 20,
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 30,
+          padding: '10px 24px',
+          boxShadow: 'none',
+          transition: 'all 0.2s ease-in-out',
+        },
+        contained: {
+          backgroundColor: '#8FB03E',
+          color: '#FFFFFF',
+          '&:hover': {
+            backgroundColor: '#6B8E23',
+            boxShadow: '0px 6px 16px rgba(143, 176, 62, 0.25)',
+            transform: 'translateY(-2px)',
+          },
+        },
+        outlined: {
+          borderColor: '#8FB03E',
+          color: '#8FB03E',
+          '&:hover': {
+            borderColor: '#6B8E23',
+            backgroundColor: 'rgba(143, 176, 62, 0.1)',
+            transform: 'translateY(-2px)',
+          },
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1E1E1E',
+          borderRadius: 24,
+          boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.2)',
+          overflow: 'hidden',
+          transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+          '&:hover': {
+            boxShadow: '0px 8px 30px rgba(0, 0, 0, 0.3)',
+          },
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        },
+        head: {
+          color: '#8FB03E',
+          fontWeight: 600,
+        },
+      },
+    },
+    MuiTableRow: {
+      styleOverrides: {
+        root: {
+          '&:hover': {
+            backgroundColor: 'rgba(143, 176, 62, 0.1)',
+          },
+        },
+      },
+    },
+    MuiInputBase: {
+      styleOverrides: {
+        root: {
+          color: '#E0E0E0',
+          borderRadius: 12,
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: 'rgba(143, 176, 62, 0.3)',
+            borderWidth: 1.5,
+            transition: 'border-color 0.2s ease-in-out',
+          },
+          '&:hover .MuiOutlinedInput-notchedOutline': {
+            borderColor: '#8FB03E',
+          },
+          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+            borderColor: '#8FB03E',
+            borderWidth: 2,
+          },
+        },
+      },
+    },
+    MuiSelect: {
+      styleOverrides: {
+        icon: {
+          color: '#8FB03E',
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 28,
+          padding: '8px',
+          boxShadow: '0px 12px 40px rgba(0, 0, 0, 0.5)',
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 30,
+          fontWeight: 500,
+        },
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#121212',
+          color: '#E0E0E0',
+          boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.5)',
+          borderRadius: 0,
+        },
+      },
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#121212',
+          backgroundImage: 'none',
+        },
+      },
+    },
+  },
+});
+
+// Legacy export for backward compatibility
+export const theme = lightTheme; 

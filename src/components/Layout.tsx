@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, Outlet } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Box,
   Drawer,
@@ -17,8 +17,6 @@ import {
   useMediaQuery,
   Avatar,
   Button,
-  Alert,
-  Collapse,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -33,25 +31,21 @@ import {
   Storefront,
   Category,
   CardMembership,
-  Logout,
   Inventory,
-  Settings,
-  Spa,
-  Storage,
-  Close as CloseIcon,
-  DataObject,
-  Storage as DatabaseIcon,
+  Logout,
 } from '@mui/icons-material'
 import * as React from 'react'
 import * as FramerMotion from 'framer-motion'
 import { styled } from '@mui/material/styles'
 import { alpha } from '@mui/material/styles'
-import { useAuth } from './AuthProvider'
-
-// DEVELOPMENT MODE flag
-const DEVELOPMENT_MODE = true;
+import { useAuth } from '../hooks/useAuth'
+import ThemeToggle from './ThemeToggle'
 
 const drawerWidth = 240
+
+interface LayoutProps {
+  children: React.ReactNode
+}
 
 interface MenuLink {
   text: string
@@ -64,20 +58,18 @@ const menuLinks: MenuLink[] = [
   { text: 'Appointments', path: '/appointments', icon: <CalendarMonth /> },
   { text: 'Clients', path: '/clients', icon: <People /> },
   { text: 'Services', path: '/services', icon: <Category /> },
+  { text: 'Products', path: '/products', icon: <Storefront /> },
   { text: 'Stylists', path: '/stylists', icon: <Person /> },
   { text: 'Orders', path: '/orders', icon: <ShoppingCart /> },
   { text: 'POS', path: '/pos', icon: <PointOfSale /> },
-  { text: 'Members', path: '/members', icon: <CardMembership /> },
   { text: 'Inventory', path: '/inventory', icon: <Inventory /> },
-  { text: 'Inventory Setup', path: '/inventory-setup', icon: <Settings /> },
-  { text: 'Database Check', path: '/database-check', icon: <DatabaseIcon /> },
-  { text: 'Local Data', path: '/local-data', icon: <DataObject /> },
+  { text: 'Members', path: '/members', icon: <CardMembership /> },
 ]
 
 const ListItemStyled = styled(ListItem)(({ theme }) => ({
   transition: 'all 0.2s ease-in-out',
   '&:hover': {
-    backgroundColor: alpha(theme.palette.salon?.olive || theme.palette.primary.main, 0.1),
+    backgroundColor: alpha(theme.palette.salon.olive, 0.1),
     transform: 'translateY(-2px)',
   },
 }))
@@ -95,67 +87,20 @@ const menuItemVariants = {
   },
 }
 
-// Simple development mode layout
-export default function Layout() {
+export default function Layout({ children }: LayoutProps) {
   const theme = useTheme()
   const location = useLocation()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [showDevBanner, setShowDevBanner] = useState(DEVELOPMENT_MODE)
+  const { user, logout } = useAuth()
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
   }
 
-  const handleMenuItemClick = (path: string) => {
-    // Use window.location for navigation instead of React Router Link
-    window.location.href = path
-    if (isMobile) {
-      setMobileOpen(false)
-    }
-  }
-
   const handleLogout = () => {
-    // Clear auth tokens and redirect to login
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('auth_user')
-    window.location.href = '/login'
+    logout()
   }
-
-  // Simplified user section with hardcoded development user
-  const userSection = (
-    <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-          A
-        </Avatar>
-        <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            Admin User
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Administrator
-          </Typography>
-        </Box>
-      </Box>
-      <Button
-        fullWidth
-        variant="outlined"
-        color="primary"
-        startIcon={<Logout />}
-        onClick={handleLogout}
-        sx={{
-          justifyContent: 'flex-start',
-          px: 2,
-          '&:hover': {
-            backgroundColor: alpha(theme.palette.primary.main, 0.1),
-          },
-        }}
-      >
-        Logout
-      </Button>
-    </Box>
-  )
 
   const drawer = (
     <>
@@ -194,8 +139,10 @@ export default function Layout() {
               sx={{ width: '100%' }}
             >
               <ListItemButton
-                onClick={() => handleMenuItemClick(link.path)}
+                component={Link}
+                to={link.path}
                 selected={location.pathname === link.path}
+                onClick={isMobile ? handleDrawerToggle : undefined}
                 sx={{
                   borderRadius: 1,
                   minHeight: '48px',
@@ -224,39 +171,51 @@ export default function Layout() {
           </FramerMotion.motion.div>
         ))}
       </List>
-      {userSection}
+      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+            {user?.username.charAt(0).toUpperCase()}
+          </Avatar>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              {user?.username}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Administrator
+            </Typography>
+          </Box>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="body2" sx={{ 
+            color: 'text.primary',
+            fontWeight: 500,
+          }}>
+            Dark Mode
+          </Typography>
+          <ThemeToggle />
+        </Box>
+        <Button
+          fullWidth
+          variant="outlined"
+          color="primary"
+          startIcon={<Logout />}
+          onClick={handleLogout}
+          sx={{
+            justifyContent: 'flex-start',
+            px: 2,
+            '&:hover': {
+              backgroundColor: alpha(theme.palette.primary.main, 0.1),
+            },
+          }}
+        >
+          Logout
+        </Button>
+      </Box>
     </>
   )
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Development Mode Banner */}
-      <Collapse in={showDevBanner}>
-        <Alert 
-          severity="info"
-          sx={{ 
-            borderRadius: 0,
-            position: 'sticky',
-            top: 0,
-            zIndex: theme.zIndex.drawer + 2,
-          }}
-          action={
-            <IconButton
-              aria-label="close"
-              color="inherit"
-              size="small"
-              onClick={() => setShowDevBanner(false)}
-            >
-              <CloseIcon fontSize="inherit" />
-            </IconButton>
-          }
-        >
-          <Typography variant="body2">
-            <strong>Development Mode:</strong> Using mock data. Database operations are simulated and stored in localStorage.
-          </Typography>
-        </Alert>
-      </Collapse>
-
+    <Box sx={{ display: 'flex' }}>
       <AppBar
         position="fixed"
         sx={{
@@ -265,8 +224,6 @@ export default function Layout() {
           color: 'text.primary',
           boxShadow: 1,
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          top: showDevBanner ? '56px' : 0,
-          transition: 'top 0.3s',
         }}
       >
         <Toolbar>
@@ -285,86 +242,97 @@ export default function Layout() {
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ display: 'flex', flex: 1 }}>
-        <Box
-          component="nav"
-          sx={{ 
-            width: { md: drawerWidth }, 
-            flexShrink: { md: 0 },
-            ...(showDevBanner && { 
-              '& .MuiDrawer-paper': { 
-                top: '56px',
-                height: 'calc(100% - 56px)',
-              }
-            })
-          }}
-        >
-          {/* Mobile drawer */}
-          <Drawer
-            variant="temporary"
-            open={mobileOpen}
-            onClose={handleDrawerToggle}
-            ModalProps={{ keepMounted: true }}
-            sx={{
-              display: { xs: 'block', md: 'none' },
-              '& .MuiDrawer-paper': { 
-                boxSizing: 'border-box', 
-                width: drawerWidth,
-                backgroundColor: 'background.paper',
-                borderRight: '1px solid',
-                borderColor: 'divider',
-                ...(showDevBanner && { 
-                  top: '56px',
-                  height: 'calc(100% - 56px)',
-                })
-              },
-            }}
-          >
-            {drawer}
-          </Drawer>
-
-          {/* Desktop drawer */}
-          <Drawer
-            variant="permanent"
-            sx={{
-              display: { xs: 'none', md: 'block' },
-              '& .MuiDrawer-paper': { 
-                boxSizing: 'border-box', 
-                width: drawerWidth,
-                backgroundColor: 'background.paper',
-                borderRight: '1px solid',
-                borderColor: 'divider',
-                ...(showDevBanner && { 
-                  top: '56px',
-                  height: 'calc(100% - 56px)',
-                })
-              },
-            }}
-            open
-          >
-            {drawer}
-          </Drawer>
-        </Box>
-
-        <Box
-          component="main"
+      <Box
+        component="nav"
+        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+      >
+        {/* Mobile drawer */}
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
           sx={{
-            flexGrow: 1,
-            p: 3,
-            width: { md: `calc(100% - ${drawerWidth}px)` },
-            mt: { xs: 8, md: 0 },
-            minHeight: '100vh',
-            backgroundColor: 'background.default',
-            ...(showDevBanner && isMobile && {
-              mt: { xs: 'calc(56px + 64px)', md: '56px' },
-            }),
-            ...(showDevBanner && !isMobile && {
-              mt: '56px',
-            }),
+            display: { xs: 'block', md: 'none' },
+            '& .MuiDrawer-paper': { 
+              boxSizing: 'border-box', 
+              width: drawerWidth,
+              backgroundColor: 'background.paper',
+              borderRight: '1px solid',
+              borderColor: 'divider',
+              '& .MuiTypography-root': {
+                color: 'text.primary',
+              },
+              '& .MuiTypography-colorTextSecondary': {
+                color: 'text.secondary',
+              },
+              '& .MuiAvatar-root': {
+                bgcolor: 'primary.main',
+              },
+              '& .MuiListItemIcon-root': {
+                color: 'text.primary',
+              },
+              '& .MuiSvgIcon-root': {
+                color: 'inherit',
+              },
+              '& .MuiButtonBase-root:hover': {
+                backgroundColor: alpha(theme.palette.salon.olive, 0.1),
+              },
+            },
           }}
         >
-          <Outlet />
-        </Box>
+          {drawer}
+        </Drawer>
+
+        {/* Desktop drawer */}
+        <Drawer
+          variant="permanent"
+          sx={{
+            display: { xs: 'none', md: 'block' },
+            '& .MuiDrawer-paper': { 
+              boxSizing: 'border-box', 
+              width: drawerWidth,
+              backgroundColor: 'background.paper',
+              borderRight: '1px solid',
+              borderColor: 'divider',
+              '& .MuiTypography-root': {
+                color: 'text.primary',
+              },
+              '& .MuiTypography-colorTextSecondary': {
+                color: 'text.secondary',
+              },
+              '& .MuiAvatar-root': {
+                bgcolor: 'primary.main',
+              },
+              '& .MuiListItemIcon-root': {
+                color: 'text.primary',
+              },
+              '& .MuiSvgIcon-root': {
+                color: 'inherit',
+              },
+              '& .MuiButtonBase-root:hover': {
+                backgroundColor: alpha(theme.palette.salon.olive, 0.1),
+              },
+            },
+          }}
+          open
+        >
+          {drawer}
+        </Drawer>
+      </Box>
+
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          width: { md: `calc(100% - ${drawerWidth}px)` },
+          mt: { xs: 8, md: 0 },
+          minHeight: '100vh',
+          backgroundColor: 'background.default',
+        }}
+      >
+        {children}
       </Box>
     </Box>
   )
