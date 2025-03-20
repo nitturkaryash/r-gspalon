@@ -1,31 +1,64 @@
-import { Box, Typography } from '@mui/material';
+import React from 'react';
+import { Box, Typography, Paper, alpha } from '@mui/material';
+import { styled } from '@mui/material/styles';
+
+const IconWrapper = styled(Box)(({ theme }) => ({
+  marginRight: theme.spacing(2),
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: theme.palette.primary.main,
+}));
 
 interface PageHeaderProps {
   title: string;
   subtitle?: string;
   icon?: React.ReactNode;
-  children?: React.ReactNode;
+  action?: React.ReactNode;
 }
 
-export default function PageHeader({ title, subtitle, icon, children }: PageHeaderProps) {
+const PageHeader: React.FC<PageHeaderProps> = ({
+  title,
+  subtitle,
+  icon,
+  action
+}) => {
   return (
-    <Box sx={{ mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          {icon && <Box sx={{ mr: 1 }}>{icon}</Box>}
-          <Box>
-            <Typography variant="h4" component="h1">
-              {title}
+    <Paper 
+      elevation={0}
+      sx={{ 
+        p: 3, 
+        mb: 3, 
+        display: 'flex', 
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.1),
+        borderLeft: '4px solid',
+        borderColor: 'primary.main',
+        borderRadius: 1,
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        {icon && <IconWrapper>{icon}</IconWrapper>}
+        <Box>
+          <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
+            {title}
+          </Typography>
+          {subtitle && (
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
+              {subtitle}
             </Typography>
-            {subtitle && (
-              <Typography variant="subtitle1" color="text.secondary">
-                {subtitle}
-              </Typography>
-            )}
-          </Box>
+          )}
         </Box>
-        {children}
       </Box>
-    </Box>
+      
+      {action && (
+        <Box>
+          {action}
+        </Box>
+      )}
+    </Paper>
   );
-} 
+};
+
+export default PageHeader; 

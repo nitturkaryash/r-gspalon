@@ -145,23 +145,47 @@ export default function Stylists() {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h1">Stylists</Typography>
-        <Button
-          variant="contained"
-          startIcon={<PersonAddIcon />}
+    <Box sx={{ 
+      width: '100%', 
+      maxWidth: '1400px',
+      margin: '0 auto',
+      display: 'flex', 
+      flexDirection: 'column',
+      alignItems: 'stretch'
+    }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 3,
+        width: '100%'
+      }}>
+        <Typography variant="h4" component="h1" color="primary">
+          Stylists
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          startIcon={<PersonAddIcon />} 
           onClick={handleOpen}
-          sx={{ height: 'fit-content' }}
         >
           Add Stylist
         </Button>
       </Box>
 
       {stylists?.length ? (
-        <Grid container spacing={3}>
+        <Grid container spacing={3} sx={{ 
+          width: '100%', 
+          m: 0, 
+          boxSizing: 'border-box',
+          justifyContent: 'flex-start' 
+        }}>
           {stylists.map((stylist) => (
-            <Grid item xs={12} sm={6} md={4} key={stylist.id}>
+            <Grid item xs={12} sm={6} md={4} lg={3} key={stylist.id} sx={{ 
+              p: 2, 
+              boxSizing: 'border-box',
+              '& > *': { width: '100%', height: '100%' }
+            }}>
               <Card sx={{ 
                 height: '100%', 
                 display: 'flex', 
@@ -175,7 +199,7 @@ export default function Stylists() {
                 <Box sx={{ p: 2, display: 'flex', alignItems: 'center' }}>
                   <Avatar 
                     src={stylist.imageUrl || DEFAULT_AVATAR} 
-                    sx={{ width: 80, height: 80, mr: 2 }}
+                    sx={{ width: 64, height: 64, mr: 2 }}
                   />
                   <Box>
                     <Typography variant="h6" component="div">
@@ -199,7 +223,7 @@ export default function Stylists() {
                 
                 <Divider />
                 
-                <CardContent sx={{ flexGrow: 1 }}>
+                <CardContent sx={{ flexGrow: 1, p: 2 }}>
                   {stylist.bio && (
                     <Typography variant="body2" color="text.secondary" paragraph>
                       {stylist.bio}
@@ -216,36 +240,18 @@ export default function Stylists() {
                         label={specialty}
                         size="small"
                         icon={getSpecialtyIcon(specialty)}
-                        sx={{ mb: 0.5 }}
+                        sx={{ mb: 0.5, mr: 0.5 }}
                       />
                     ))}
                   </Box>
-                  
-                  {(stylist.email || stylist.phone) && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                        Contact:
-                      </Typography>
-                      {stylist.email && (
-                        <Typography variant="body2" sx={{ mb: 0.5 }}>
-                          Email: {stylist.email}
-                        </Typography>
-                      )}
-                      {stylist.phone && (
-                        <Typography variant="body2">
-                          Phone: {stylist.phone}
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
                 </CardContent>
                 
-                <CardActions sx={{ justifyContent: 'flex-end', p: 2, pt: 0 }}>
-                  <IconButton onClick={() => handleEdit(stylist)} color="primary">
-                    <EditIcon />
+                <CardActions sx={{ justifyContent: 'flex-end', p: 1.5, pt: 0 }}>
+                  <IconButton onClick={() => handleEdit(stylist)} color="primary" size="small">
+                    <EditIcon fontSize="small" />
                   </IconButton>
-                  <IconButton onClick={() => handleDelete(stylist.id)} color="error">
-                    <DeleteIcon />
+                  <IconButton onClick={() => handleDelete(stylist.id)} color="error" size="small">
+                    <DeleteIcon fontSize="small" />
                   </IconButton>
                 </CardActions>
               </Card>
@@ -253,9 +259,9 @@ export default function Stylists() {
           ))}
         </Grid>
       ) : (
-        <Paper sx={{ p: 3 }}>
+        <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography variant="body1" color="text.secondary">
-            No stylists available. Add stylists to get started.
+            No stylists found. Add your first stylist to get started.
           </Typography>
         </Paper>
       )}

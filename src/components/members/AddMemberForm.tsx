@@ -80,6 +80,7 @@ export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
     phone: '',
     balance: 0,
     membershipType: 'regular' as 'regular' | 'premium',
+    status: 'active' as const,
   });
   const [errors, setErrors] = useState({
     name: false,
@@ -102,18 +103,30 @@ export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (validateForm()) {
-      onAddMember(formData);
-      setFormData({ 
-        name: '', 
-        email: '', 
-        phone: '', 
-        balance: 0,
-        membershipType: 'regular' 
-      });
-    }
+    
+    const memberData = {
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      balance: parseFloat(formData.balance.toString()) || 0,
+      membershipType: formData.membershipType as "regular" | "premium",
+      status: 'active' as const,
+    };
+    
+    onAddMember(memberData);
+    
+    // Reset form
+    setFormData({ 
+      name: '', 
+      email: '', 
+      phone: '', 
+      balance: 0,
+      membershipType: 'regular',
+      status: 'active'
+    });
+    setErrors({ name: false, email: false, phone: false });
   };
 
   return (
@@ -195,7 +208,8 @@ export default function AddMemberForm({ onAddMember }: AddMemberFormProps) {
               email: '', 
               phone: '', 
               balance: 0,
-              membershipType: 'regular' 
+              membershipType: 'regular',
+              status: 'active'
             });
             setErrors({ name: false, email: false, phone: false });
           }}

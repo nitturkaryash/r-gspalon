@@ -1,13 +1,5 @@
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { ThemeProvider as MuiThemeProvider, createTheme, Theme } from '@mui/material/styles';
-
-type ThemeMode = 'light' | 'dark';
-
-interface ThemeContextType {
-  mode: ThemeMode;
-  toggleTheme: () => void;
-  isDarkMode: boolean;
-}
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 
 // Base theme settings shared between light and dark modes
 const baseThemeSettings = {
@@ -16,38 +8,8 @@ const baseThemeSettings = {
   },
   typography: {
     fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    h1: {
-      fontWeight: 700,
-      fontSize: '2.5rem',
-      letterSpacing: '-0.02em',
-      lineHeight: 1.2,
-    },
-    h2: {
-      fontWeight: 600,
-      fontSize: '2rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.3,
-    },
-    h3: {
-      fontWeight: 600,
-      fontSize: '1.5rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.4,
-    },
-    h4: {
-      fontWeight: 600,
-      fontSize: '2rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.3,
-    },
-    body1: {
-      fontSize: '1rem',
-      letterSpacing: '-0.01em',
-      lineHeight: 1.5,
-    },
     button: {
       textTransform: 'none',
-      fontWeight: 500,
     },
   },
 };
@@ -71,10 +33,6 @@ const lightTheme = createTheme({
       default: '#F5F5F0', // Off-white
       paper: '#FFFFFF',
     },
-    text: {
-      primary: '#333333',
-      secondary: '#666666',
-    },
   },
 });
 
@@ -97,26 +55,18 @@ const darkTheme = createTheme({
       default: '#121212', // Dark background
       paper: '#1E1E1E',
     },
-    text: {
-      primary: '#FFFFFF',
-      secondary: '#AAAAAA',
-    },
   },
 });
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext(undefined);
 
-interface ThemeProviderProps {
-  children: ReactNode;
-}
-
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
+export const ThemeProvider = ({ children }) => {
   // Check if user has previously set a preference
-  const savedTheme = localStorage.getItem('themeMode') as ThemeMode | null;
+  const savedTheme = localStorage.getItem('themeMode');
   
   // Initialize with saved theme or system preference
   const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const [mode, setMode] = useState<ThemeMode>(
+  const [mode, setMode] = useState(
     savedTheme || (prefersDarkMode ? 'dark' : 'light')
   );
 
@@ -135,7 +85,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Update theme if system preference changes
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
+    const handleChange = (e) => {
       if (!localStorage.getItem('themeMode')) {
         setMode(e.matches ? 'dark' : 'light');
       }
@@ -161,7 +111,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 };
 
 // Custom hook to use the theme context
-export const useThemeContext = (): ThemeContextType => {
+export const useThemeContext = () => {
   const context = useContext(ThemeContext);
   if (!context) {
     throw new Error('useThemeContext must be used within a ThemeProvider');

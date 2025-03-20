@@ -7,6 +7,7 @@ import { useInventory } from '../hooks/useInventory';
 import PurchaseTab from '../components/inventory/PurchaseTab.jsx';
 import SalesTab from '../components/inventory/SalesTab';
 import ConsumptionTab from '../components/inventory/ConsumptionTab';
+import BalanceStockTab from '../components/inventory/BalanceStockTab';
 import { downloadCsv } from '../utils/csvExporter';
 import { Link } from 'react-router-dom';
 
@@ -17,9 +18,10 @@ interface TabPanelProps {
 }
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(3),
-  margin: theme.spacing(2, 0),
-  boxShadow: theme.shadows[2],
+  padding: theme.spacing(2),
+  margin: theme.spacing(1, 0),
+  boxShadow: theme.shadows[1],
+  width: '100%',
 }));
 
 const TabPanel = (props: TabPanelProps) => {
@@ -33,7 +35,7 @@ const TabPanel = (props: TabPanelProps) => {
       aria-labelledby={`inventory-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ px: 0, py: 2 }}>{children}</Box>}
     </div>
   );
 };
@@ -94,10 +96,15 @@ const Inventory: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ my: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
+    <Container maxWidth="lg" sx={{ p: 0 }}>
+      <Box sx={{ my: 2, px: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          mb: 2 
+        }}>
+          <Typography variant="h4" component="h1" color="primary">
             Inventory Management
           </Typography>
           <Button
@@ -114,7 +121,7 @@ const Inventory: React.FC = () => {
         {error && error.message.includes('does not exist') && (
           <Alert 
             severity="warning" 
-            sx={{ mb: 3 }}
+            sx={{ mb: 2 }}
             action={
               <Button color="inherit" size="small" component={Link} to="/inventory-setup">
                 Setup Tables
@@ -127,10 +134,17 @@ const Inventory: React.FC = () => {
 
         <StyledPaper>
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs value={tabValue} onChange={handleTabChange} aria-label="inventory tabs">
+            <Tabs 
+              value={tabValue} 
+              onChange={handleTabChange} 
+              aria-label="inventory tabs"
+              variant="scrollable"
+              scrollButtons="auto"
+            >
               <Tab label="Purchases" {...a11yProps(0)} />
               <Tab label="Sales to Customers" {...a11yProps(1)} />
               <Tab label="Salon Consumption" {...a11yProps(2)} />
+              <Tab label="Balance Stock" {...a11yProps(3)} />
             </Tabs>
           </Box>
           
@@ -155,6 +169,14 @@ const Inventory: React.FC = () => {
               consumption={consumptionQuery.data || []} 
               isLoading={consumptionQuery.isLoading} 
               error={consumptionQuery.error}
+            />
+          </TabPanel>
+          
+          <TabPanel value={tabValue} index={3}>
+            <BalanceStockTab
+              balanceStock={balanceStockQuery.data || []}
+              isLoading={balanceStockQuery.isLoading}
+              error={balanceStockQuery.error}
             />
           </TabPanel>
         </StyledPaper>

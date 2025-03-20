@@ -12,7 +12,6 @@ import {
   Inventory as InventoryIcon,
   FileDownload as FileDownloadIcon
 } from '@mui/icons-material';
-import InventoryExport from '../components/inventory/InventoryExport';
 import PageHeader from '../components/PageHeader';
 
 const InventoryExportPage: React.FC = () => {
@@ -56,7 +55,19 @@ const InventoryExportPage: React.FC = () => {
             about each transaction, making it easy to analyze your inventory data or import it into other systems.
           </Typography>
           
-          <InventoryExport />
+          <Box sx={{ 
+            p: 3, 
+            textAlign: 'center',
+            bgcolor: 'background.default',
+            borderRadius: 1
+          }}>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Export Feature Coming Soon
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              The inventory export functionality is currently being implemented.
+            </Typography>
+          </Box>
         </Box>
       </Paper>
     </Container>

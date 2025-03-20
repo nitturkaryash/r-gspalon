@@ -14,6 +14,7 @@ interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
+  sx?: React.CSSProperties | Record<string, any>;
 }
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
@@ -32,8 +33,9 @@ const TabPanel = (props: TabPanelProps) => {
       id={`inventory-tabpanel-${index}`}
       aria-labelledby={`inventory-tab-${index}`}
       {...other}
+      style={{ width: '100%' }}
     >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ width: '100%', p: 2, overflow: 'visible' }}>{children}</Box>}
     </div>
   );
 };
@@ -44,6 +46,26 @@ const a11yProps = (index: number) => {
     'aria-controls': `inventory-tabpanel-${index}`,
   };
 };
+
+// Update BoxContainer for better alignment and scaling
+const BoxContainer = styled(Box)(({ theme }) => ({
+  width: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  backgroundColor: theme.palette.background.default,
+  color: theme.palette.text.primary,
+  height: '100%',
+  boxSizing: 'border-box',
+  overflow: 'visible',
+  '& .MuiTabs-root': {
+    width: '100%'
+  },
+  '& .MuiTabPanel-root': {
+    width: '100%',
+    padding: 0
+  }
+}));
 
 const Inventory: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -86,10 +108,19 @@ const Inventory: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ my: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
+    <BoxContainer>
+      <Box sx={{ 
+        width: '100%',
+        maxWidth: '1400px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        margin: '0 auto',
+        backgroundColor: 'background.default',
+        overflow: 'visible'
+      }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, width: '100%' }}>
+          <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold' }}>
             Inventory Management
           </Typography>
           <Button
@@ -106,7 +137,7 @@ const Inventory: React.FC = () => {
         {error && error.message.includes('does not exist') && (
           <Alert 
             severity="warning" 
-            sx={{ mb: 3 }}
+            sx={{ mb: 3, textAlign: 'left', width: '100%' }}
             action={
               <Button color="inherit" size="small" component={Link} to="/inventory-setup">
                 Setup Tables
@@ -117,41 +148,57 @@ const Inventory: React.FC = () => {
           </Alert>
         )}
 
-        <StyledPaper>
-          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs value={tabValue} onChange={handleTabChange} aria-label="inventory tabs">
-              <Tab label="Purchases" {...a11yProps(0)} />
-              <Tab label="Sales to Customers" {...a11yProps(1)} />
-              <Tab label="Salon Consumption" {...a11yProps(2)} />
-            </Tabs>
-          </Box>
-          
-          <TabPanel value={tabValue} index={0}>
-            <PurchaseTab 
-              purchases={purchasesQuery.data || []} 
-              isLoading={purchasesQuery.isLoading} 
-              error={purchasesQuery.error}
-            />
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={1}>
-            <SalesTab 
-              sales={salesQuery.data || []} 
-              isLoading={salesQuery.isLoading} 
-              error={salesQuery.error}
-            />
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={2}>
-            <ConsumptionTab 
-              consumption={consumptionQuery.data || []} 
-              isLoading={consumptionQuery.isLoading} 
-              error={consumptionQuery.error}
-            />
-          </TabPanel>
-        </StyledPaper>
+        <Box sx={{ 
+          borderBottom: 1, 
+          borderColor: 'divider', 
+          width: '100%',
+          overflowX: 'auto'
+        }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            aria-label="inventory tabs"
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ 
+              width: '100%',
+              '& .MuiTab-root': {
+                textAlign: 'left',
+                alignItems: 'flex-start'
+              }
+            }}
+          >
+            <Tab label="Purchases" {...a11yProps(0)} />
+            <Tab label="Sales to Customers" {...a11yProps(1)} />
+            <Tab label="Salon Consumption" {...a11yProps(2)} />
+          </Tabs>
+        </Box>
+
+        <TabPanel value={tabValue} index={0} sx={{ backgroundColor: 'background.default', padding: 0, mt: 2, width: '100%' }}>
+          <PurchaseTab 
+            purchases={purchasesQuery.data || []} 
+            isLoading={purchasesQuery.isLoading} 
+            error={purchasesQuery.error}
+          />
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={1} sx={{ backgroundColor: 'background.default', padding: 0, mt: 2, width: '100%' }}>
+          <SalesTab 
+            sales={salesQuery.data || []} 
+            isLoading={salesQuery.isLoading} 
+            error={salesQuery.error}
+          />
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={2} sx={{ backgroundColor: 'background.default', padding: 0, mt: 2, width: '100%' }}>
+          <ConsumptionTab 
+            consumption={consumptionQuery.data || []} 
+            isLoading={consumptionQuery.isLoading} 
+            error={consumptionQuery.error}
+          />
+        </TabPanel>
       </Box>
-    </Container>
+    </BoxContainer>
   );
 };
 

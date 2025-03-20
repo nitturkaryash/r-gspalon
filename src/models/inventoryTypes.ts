@@ -99,6 +99,11 @@ export interface BalanceStock {
   balance_qty?: number;
   balance_value?: number;
   avg_rate?: number;
+  taxable_value?: number;
+  igst?: number;
+  cgst?: number;
+  sgst?: number;
+  invoice_value?: number;
 }
 
 export interface PurchaseFormState {

@@ -266,11 +266,11 @@ const formatHour = (hour: number): string => {
 };
 
 // Export the Break interface
-export interface Break extends StylistBreak {
+export interface Break {
+  id: string;
   startTime: string;
   endTime: string;
   reason?: string;
-  id: string;
 }
 
 interface Stylist {

@@ -133,11 +133,19 @@ export default function Clients() {
   }
   
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h1">Clients</Typography>
+    <Box sx={{ p: 2 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 3 
+      }}>
+        <Typography variant="h4" component="h1" color="primary">
+          Clients
+        </Typography>
         <Button
           variant="contained"
+          color="primary"
           startIcon={<PersonAddIcon />}
           onClick={() => setOpenAddDialog(true)}
           sx={{ height: 'fit-content' }}
@@ -147,40 +155,41 @@ export default function Clients() {
       </Box>
       
       {/* Search Bar */}
-      <TextField
-        fullWidth
-        variant="outlined"
-        placeholder="Search clients by name, phone, or email..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon />
-            </InputAdornment>
-          ),
-        }}
-        sx={{ mb: 3 }}
-      />
+      <Box sx={{ mb: 3 }}>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Search clients by name, phone, or email..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
       
       {/* Clients Table */}
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)' }}>
         {clients && clients.length > 0 ? (
-          <TableContainer>
-            <Table>
+          <TableContainer sx={{ maxHeight: 'calc(100vh - 250px)' }}>
+            <Table stickyHeader>
               <TableHead>
                 <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Contact</TableCell>
-                  <TableCell>Last Visit</TableCell>
-                  <TableCell>Total Spent</TableCell>
-                  <TableCell>Pending Payment</TableCell>
-                  <TableCell>Actions</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Contact</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Last Visit</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Total Spent</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Pending Payment</TableCell>
+                  <TableCell sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredClients.map((client) => (
-                  <TableRow key={client.id}>
+                  <TableRow key={client.id} hover>
                     <TableCell>{client.full_name}</TableCell>
                     <TableCell>
                       <Typography variant="body2">{client.phone}</Typography>
@@ -190,7 +199,7 @@ export default function Clients() {
                       {client.last_visit ? new Date(client.last_visit).toLocaleDateString() : 'Never'}
                     </TableCell>
                     <TableCell>
-                      <Typography color="success.main" fontWeight="bold">
+                      <Typography fontWeight="bold">
                         {formatCurrency(client.total_spent)}
                       </Typography>
                     </TableCell>
@@ -206,7 +215,7 @@ export default function Clients() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Box>
+                      <Box sx={{ display: 'flex' }}>
                         <Tooltip title="Edit Client">
                           <IconButton onClick={() => handleOpenEditDialog(client)}>
                             <EditIcon />
@@ -231,9 +240,11 @@ export default function Clients() {
             </Table>
           </TableContainer>
         ) : (
-          <Typography variant="body1" color="text.secondary">
-            No clients in the database. Add a client to get started.
-          </Typography>
+          <Box sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="body1" color="text.secondary">
+              No clients in the database. Add a client to get started.
+            </Typography>
+          </Box>
         )}
       </Paper>
       

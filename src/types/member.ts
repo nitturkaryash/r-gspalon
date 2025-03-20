@@ -1,10 +1,12 @@
 export interface Member {
-  id: string;
+  id: number | string;
   name: string;
   email: string;
   phone: string;
-  joinDate: Date;
+  joinDate: string | Date;
   balance: number;
+  profileImage?: string;
+  status?: 'active' | 'inactive';
   membershipType?: 'regular' | 'premium';
   notes?: string;
 } 

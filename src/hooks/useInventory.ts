@@ -631,6 +631,121 @@ export const useInventory = () => {
     }
   });
 
+  // Function to calculate balance stock
+  const calculateBalanceStock = async (): Promise<BalanceStock[]> => {
+    try {
+      // First we need to query all inventory transactions
+      const purchasesPromise = supabase.from(TABLES.PURCHASES).select('*');
+      const salesPromise = supabase.from(TABLES.SALES).select('*');
+      const consumptionPromise = supabase.from(TABLES.CONSUMPTION).select('*');
+      
+      const [purchasesResult, salesResult, consumptionResult] = await Promise.all([
+        purchasesPromise,
+        salesPromise,
+        consumptionPromise
+      ]);
+      
+      if (purchasesResult.error) throw handleSupabaseError(purchasesResult.error);
+      if (salesResult.error) throw handleSupabaseError(salesResult.error);
+      if (consumptionResult.error) throw handleSupabaseError(consumptionResult.error);
+      
+      const purchases = purchasesResult.data || [];
+      const sales = salesResult.data || [];
+      const consumption = consumptionResult.data || [];
+      
+      // Group all transactions by product
+      const productMap = new Map();
+      
+      // Add purchases
+      purchases.forEach(purchase => {
+        const key = purchase.product_name;
+        if (!productMap.has(key)) {
+          productMap.set(key, {
+            id: v4(),
+            product_name: purchase.product_name || 'Unknown Product',
+            hsn_code: purchase.hsn_code,
+            units: purchase.units,
+            balance_qty: 0,
+            taxable_value: 0,
+            igst: 0,
+            cgst: 0,
+            sgst: 0,
+            invoice_value: 0,
+            last_updated: new Date().toISOString()
+          });
+        }
+        
+        const record = productMap.get(key);
+        record.balance_qty += purchase.purchase_qty || 0;
+        record.taxable_value += purchase.purchase_taxable_value || 0;
+        record.igst += purchase.purchase_igst || 0;
+        record.cgst += purchase.purchase_cgst || 0;
+        record.sgst += purchase.purchase_sgst || 0;
+        record.invoice_value += purchase.purchase_invoice_value_rs || 0;
+      });
+      
+      // Subtract sales
+      sales.forEach(sale => {
+        const key = sale.product_name;
+        if (productMap.has(key)) {
+          const record = productMap.get(key);
+          record.balance_qty -= sale.sale_qty || 0;
+        }
+      });
+      
+      // Subtract consumption
+      consumption.forEach(cons => {
+        const key = cons.product_name;
+        if (productMap.has(key)) {
+          const record = productMap.get(key);
+          record.balance_qty -= cons.consumption_qty || 0;
+        }
+      });
+      
+      // Convert map to array and round values
+      const balanceStock = Array.from(productMap.values()).map(item => ({
+        ...item,
+        taxable_value: parseFloat(item.taxable_value.toFixed(2)),
+        igst: parseFloat(item.igst.toFixed(2)),
+        cgst: parseFloat(item.cgst.toFixed(2)),
+        sgst: parseFloat(item.sgst.toFixed(2)),
+        invoice_value: parseFloat(item.invoice_value.toFixed(2))
+      }));
+      
+      console.log('Calculated balance stock:', balanceStock);
+      
+      // Create or update balance stock records
+      try {
+        const { error } = await supabase
+          .from(TABLES.BALANCE_STOCK)
+          .upsert(balanceStock, { onConflict: 'product_name' });
+        
+        if (error) throw handleSupabaseError(error);
+      } catch (upsertError) {
+        console.error('Error upserting balance stock:', upsertError);
+        // Continue even if upsert fails - at least return the calculated data
+      }
+      
+      return balanceStock;
+    } catch (error) {
+      console.error('Error calculating balance stock:', error);
+      throw error;
+    }
+  };
+
+  // Add a mutation for recalculating balance stock
+  const recalculateBalanceStockMutation = useMutation({
+    mutationFn: calculateBalanceStock,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.BALANCE_STOCK] });
+    }
+  });
+
+  // Function to manually trigger recalculation
+  const recalculateBalanceStock = async () => {
+    return recalculateBalanceStockMutation.mutateAsync();
+  };
+
   return {
     // Queries
     purchasesQuery,
@@ -658,6 +773,7 @@ export const useInventory = () => {
     processingStats,
     
     // Add the new function to the exports
-    recordSalonConsumption: recordSalonConsumption.mutateAsync
+    recordSalonConsumption: recordSalonConsumption.mutateAsync,
+    recalculateBalanceStock,
   };
 };

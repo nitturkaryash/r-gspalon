@@ -5,30 +5,31 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Typography,
   IconButton,
   Box,
-  Typography,
 } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
 
 interface AccessibleDialogProps extends Omit<DialogProps, 'title'> {
   title: React.ReactNode;
-  children: React.ReactNode;
+  description?: React.ReactNode;
   actions?: React.ReactNode;
   onClose: () => void;
-  titleIcon?: React.ReactNode;
+  disableCloseButton?: boolean;
 }
 
 /**
  * An accessible dialog component that properly handles focus management
- * and ARIA attributes to avoid accessibility issues.
+ * and implements WAI-ARIA design patterns
  */
 export const AccessibleDialog: React.FC<AccessibleDialogProps> = ({
   title,
-  children,
+  description,
   actions,
   onClose,
-  titleIcon,
+  children,
+  disableCloseButton = false,
   ...dialogProps
 }) => {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -38,9 +39,7 @@ export const AccessibleDialog: React.FC<AccessibleDialogProps> = ({
   // Focus the close button when the dialog opens
   useEffect(() => {
     if (dialogProps.open && closeButtonRef.current) {
-      setTimeout(() => {
-        closeButtonRef.current?.focus();
-      }, 100);
+      closeButtonRef.current.focus();
     }
   }, [dialogProps.open]);
 
@@ -49,42 +48,64 @@ export const AccessibleDialog: React.FC<AccessibleDialogProps> = ({
       {...dialogProps}
       onClose={onClose}
       aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      // Ensure proper focus management
-      disableEnforceFocus={false}
-      // Don't keep the dialog in the DOM when closed
-      keepMounted={false}
-      // Use the portal to render outside the DOM hierarchy
-      disablePortal={false}
-      // Ensure focus is properly restored
-      disableRestoreFocus={false}
-      // Ensure proper focus trap
-      disableAutoFocus={false}
+      aria-describedby={description ? descriptionId : undefined}
+      keepMounted={false} // Don't keep the dialog in the DOM when closed
+      PaperProps={{
+        sx: {
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 8px 16px rgba(0, 0, 0, 0.1)'
+        }
+      }}
     >
-      <DialogTitle id={titleId} sx={{ m: 0, p: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {titleIcon && <Box sx={{ mr: 1 }}>{titleIcon}</Box>}
-            <Typography variant="h6" component="span">
-              {title}
-            </Typography>
-          </Box>
+      <DialogTitle 
+        id={titleId} 
+        sx={{ 
+          m: 0, 
+          p: 2.5,
+          fontSize: '1.2rem',
+          fontWeight: 600,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}
+      >
+        <Typography variant="h6" component="span" sx={{ fontWeight: 600 }}>
+          {title}
+        </Typography>
+        {!disableCloseButton && (
           <IconButton
             aria-label="close"
             onClick={onClose}
             ref={closeButtonRef}
             edge="end"
-            size="small"
-            tabIndex={0}
+            sx={{ 
+              color: 'text.secondary',
+              borderRadius: '8px',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)'
+              }
+            }}
           >
             <CloseIcon />
           </IconButton>
-        </Box>
+        )}
       </DialogTitle>
-      <DialogContent dividers id={descriptionId}>
+      <DialogContent 
+        dividers 
+        id={descriptionId}
+        sx={{
+          p: 3,
+          borderTop: '1px solid',
+          borderBottom: actions ? '1px solid' : 'none',
+          borderColor: 'divider'
+        }}
+      >
         {children}
       </DialogContent>
-      {actions && <DialogActions>{actions}</DialogActions>}
+      {actions && <DialogActions sx={{ p: 2.5 }}>{actions}</DialogActions>}
     </Dialog>
   );
 }; 

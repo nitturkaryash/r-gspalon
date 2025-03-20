@@ -1,11 +1,11 @@
 import React from 'react';
-import { Card, CardContent, CardActions, Typography, Button, Box, Divider } from '@mui/material';
+import { Card, CardContent, CardActions, Typography, Button, Box, Divider, Chip } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { Member } from '../../types/member';
+import { Stylist } from '../../types/Stylist';
+import { Edit, Delete, Phone, Email } from '@mui/icons-material';
 
-// Update StyledCard for better scaling and fit
 const StyledCard = styled(Card)(({ theme }) => ({
-  height: '100%', 
+  height: '100%',
   width: '100%',
   display: 'flex',
   flexDirection: 'column',
@@ -21,28 +21,24 @@ const StyledCard = styled(Card)(({ theme }) => ({
   },
 }));
 
-// Keep BalanceArea styling
-const BalanceArea = styled(Box)(({ theme }) => ({
-  backgroundColor: theme.palette.primary.main,
-  color: theme.palette.primary.contrastText,
-  padding: theme.spacing(1.5),
-  textAlign: 'left',
-  borderRadius: `0 0 ${theme.shape.borderRadius}px ${theme.shape.borderRadius}px`,
+const StatusChip = styled(Chip)(({ theme }) => ({
+  height: 24,
+  fontSize: '0.75rem',
 }));
 
-interface MemberCardProps {
-  member: Member;
-  onEdit: (member: Member) => void;
-  onDelete: (id: string | number) => void;
-  onViewDetails: (member: Member) => void;
+interface StylistCardProps {
+  stylist: Stylist;
+  onEdit: (stylist: Stylist) => void;
+  onDelete: (id: number) => void;
+  onViewDetails: (stylist: Stylist) => void;
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete, onViewDetails }) => {
-  const joinDate = new Date(member.joinDate).toLocaleDateString('en-US', {
+const StylistCard: React.FC<StylistCardProps> = ({ stylist, onEdit, onDelete, onViewDetails }) => {
+  const joinDate = stylist.joinDate ? new Date(stylist.joinDate).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  });
+  }) : 'N/A';
 
   return (
     <StyledCard>
@@ -50,20 +46,25 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete, onVie
         <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }} noWrap>
-              {member.name}
+              {stylist.name}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Joined: {joinDate}
             </Typography>
           </Box>
+          <StatusChip 
+            label={stylist.status === 'active' ? 'Active' : 'Inactive'} 
+            color={stylist.status === 'active' ? 'success' : 'default'}
+            size="small"
+          />
         </Box>
         
         <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-          Mobile: {member.phone || 'N/A'}
+          Mobile: {stylist.phone || 'N/A'}
         </Typography>
         
         <Typography variant="body2" color="text.secondary">
-          Email: {member.email || 'N/A'}
+          Email: {stylist.email || 'N/A'}
         </Typography>
       </CardContent>
       
@@ -74,7 +75,7 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete, onVie
             size="small" 
             variant="outlined" 
             color="primary"
-            onClick={() => onViewDetails(member)}
+            onClick={() => onViewDetails(stylist)}
           >
             Details
           </Button>
@@ -82,7 +83,7 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete, onVie
             size="small" 
             variant="outlined" 
             color="secondary"
-            onClick={() => onEdit(member)}
+            onClick={() => onEdit(stylist)}
           >
             Edit
           </Button>
@@ -90,20 +91,14 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, onEdit, onDelete, onVie
             size="small" 
             variant="outlined" 
             color="error"
-            onClick={() => onDelete(member.id)}
+            onClick={() => onDelete(stylist.id)}
           >
             Delete
           </Button>
         </CardActions>
-        
-        <BalanceArea>
-          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
-            Balance: ₹{member.balance.toFixed(2)}
-          </Typography>
-        </BalanceArea>
       </Box>
     </StyledCard>
   );
 };
 
-export default MemberCard; 
+export default StylistCard; 

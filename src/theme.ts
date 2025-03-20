@@ -48,6 +48,12 @@ const baseTheme = {
       letterSpacing: '-0.01em',
       lineHeight: 1.4,
     },
+    h4: {
+      fontWeight: 600,
+      fontSize: '2rem',
+      letterSpacing: '-0.01em',
+      lineHeight: 1.3,
+    },
     h6: {
       fontWeight: 600,
       fontSize: '1.125rem',
@@ -249,59 +255,86 @@ export const lightTheme = createTheme({
         },
       },
     },
+    MuiTypography: {
+      styleOverrides: {
+        h1: {
+          color: '#6B8E23', // Ensure h1 is primary olive color
+        },
+        h4: {
+          color: '#6B8E23', // Ensure h4 is primary olive color (when used as page title)
+        }
+      }
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0, // Remove border radius from list items
+        }
+      }
+    },
+    MuiGrid: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0,
+        }
+      }
+    },
   },
 });
 
-// Dark theme
+// Legacy export for backward compatibility
+export const theme = lightTheme;
+
+// Add dark theme export
 export const darkTheme = createTheme({
   ...baseTheme,
   palette: {
     mode: 'dark',
     primary: {
       main: '#8FB03E', // Lighter olive for dark mode
-      light: '#9FBF5F',
+      light: '#A9C667',
       dark: '#6B8E23',
       contrastText: '#FFFFFF',
     },
     secondary: {
       main: '#E6D5B8', // Lighter tan for dark mode
-      light: '#F1E7D6',
+      light: '#FFF8E7',
       dark: '#D2B48C',
-      contrastText: '#333333',
+      contrastText: '#121212',
     },
     background: {
       default: '#121212', // Dark background
-      paper: '#1A1A1A',    // Even darker for paper elements (was #1E1E1E)
+      paper: '#1E1E1E',   // Dark paper elements
     },
     text: {
-      primary: '#E0E0E0',  // Light gray for primary text
-      secondary: '#AAAAAA', // Medium light gray for secondary text
+      primary: '#FFFFFF',  // White for primary text
+      secondary: '#AAAAAA', // Light gray for secondary text
     },
     salon: {
       olive: '#8FB03E',     // Lighter olive for dark mode
-      oliveLight: '#A6C261', // Even lighter olive
-      oliveDark: '#6B8E23',  // Original olive (appears darker in dark mode)
-      offWhite: '#1A1A1A',   // Dark mode paper background
-      cream: '#332F28',      // Dark cream equivalent
-      accent: '#E6D5B8',     // Lighter tan for dark mode
+      oliveLight: '#A9C667', // Even lighter olive
+      oliveDark: '#6B8E23',  // Original olive
+      offWhite: '#1E1E1E',   // Dark off-white equivalent
+      cream: '#333333',      // Dark cream equivalent
+      accent: '#E6D5B8',     // Lighter tan accent
     },
-    divider: 'rgba(255, 255, 255, 0.08)',
+    divider: 'rgba(255, 255, 255, 0.12)',
   },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
         body: {
           backgroundColor: '#121212',
-          color: '#E0E0E0',
+          color: '#FFFFFF',
         },
       },
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          backgroundColor: '#1A1A1A',
+          backgroundColor: '#1E1E1E',
           backgroundImage: 'none',
-          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.5)',
+          boxShadow: '0px 2px 12px rgba(0, 0, 0, 0.2)',
           borderRadius: 20,
         },
       },
@@ -318,7 +351,7 @@ export const darkTheme = createTheme({
           backgroundColor: '#8FB03E',
           color: '#FFFFFF',
           '&:hover': {
-            backgroundColor: '#6B8E23',
+            backgroundColor: '#A9C667',
             boxShadow: '0px 6px 16px rgba(143, 176, 62, 0.25)',
             transform: 'translateY(-2px)',
           },
@@ -327,8 +360,8 @@ export const darkTheme = createTheme({
           borderColor: '#8FB03E',
           color: '#8FB03E',
           '&:hover': {
-            borderColor: '#6B8E23',
-            backgroundColor: 'rgba(143, 176, 62, 0.1)',
+            borderColor: '#A9C667',
+            backgroundColor: 'rgba(143, 176, 62, 0.15)',
             transform: 'translateY(-2px)',
           },
         },
@@ -363,7 +396,7 @@ export const darkTheme = createTheme({
       styleOverrides: {
         root: {
           '&:hover': {
-            backgroundColor: 'rgba(143, 176, 62, 0.1)',
+            backgroundColor: 'rgba(143, 176, 62, 0.08)',
           },
         },
       },
@@ -434,11 +467,38 @@ export const darkTheme = createTheme({
         paper: {
           backgroundColor: '#121212',
           backgroundImage: 'none',
+          borderRadius: 0, // Ensure no rounded corners
         },
       },
     },
+    MuiTypography: {
+      styleOverrides: {
+        h1: {
+          color: '#8FB03E', // Lighter olive for dark mode
+        },
+        h4: {
+          color: '#8FB03E', // Lighter olive for dark mode (when used as page title)
+        },
+        root: {
+          '&.MuiTypography-body1': {
+            color: '#FFFFFF', // Force white text for body1 which is often used for prices
+          },
+        },
+      },
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0, // Remove border radius from list items
+        }
+      }
+    },
+    MuiGrid: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0,
+        }
+      }
+    },
   },
-});
-
-// Legacy export for backward compatibility
-export const theme = lightTheme; 
+}); 

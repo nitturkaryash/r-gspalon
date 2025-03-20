@@ -25,22 +25,19 @@ const initialMembers: Member[] = [
   }
 ];
 
-// Load members from localStorage or use initial ones
+// Load members from localStorage
 const loadMembersFromStorage = (): Member[] => {
   try {
-    const savedMembers = localStorage.getItem('members');
-    if (savedMembers) {
-      const parsedMembers = JSON.parse(savedMembers);
-      // Convert joinDate strings back to Date objects
-      return parsedMembers.map((member: any) => ({
-        ...member,
-        joinDate: new Date(member.joinDate)
-      }));
+    const storedMembers = localStorage.getItem('members');
+    
+    if (storedMembers) {
+      return JSON.parse(storedMembers);
     }
+    
     // If no members found in localStorage, save the initial ones
     localStorage.setItem('members', JSON.stringify(initialMembers.map(member => ({
       ...member,
-      joinDate: member.joinDate.toISOString()
+      joinDate: typeof member.joinDate === 'string' ? member.joinDate : member.joinDate.toISOString()
     }))));
     return initialMembers;
   } catch (error) {
@@ -55,7 +52,7 @@ const saveMembersToStorage = (members: Member[]) => {
     // Convert Date objects to ISO strings for storage
     const membersToSave = members.map(member => ({
       ...member,
-      joinDate: member.joinDate.toISOString()
+      joinDate: typeof member.joinDate === 'string' ? member.joinDate : member.joinDate.toISOString()
     }));
     localStorage.setItem('members', JSON.stringify(membersToSave));
   } catch (error) {
@@ -90,47 +87,49 @@ export function useMembers() {
   };
 
   // Update a member
-  const updateMember = (memberId: string, updates: Partial<Omit<Member, 'id'>>) => {
+  const updateMember = (memberId: string | number, updates: Partial<Omit<Member, 'id'>>) => {
     const index = members.findIndex(m => m.id === memberId);
+    
     if (index === -1) {
       toast.error('Member not found');
       return null;
     }
-
+    
     const updatedMembers = [...members];
-    updatedMembers[index] = {
+    const updatedMember = {
       ...updatedMembers[index],
-      ...updates
+      ...updates,
+      joinDate: typeof updatedMembers[index].joinDate === 'string' ? updatedMembers[index].joinDate : updatedMembers[index].joinDate.toISOString()
     };
 
+    updatedMembers[index] = updatedMember;
     setMembers(updatedMembers);
     saveMembersToStorage(updatedMembers);
     toast.success('Member updated successfully');
-    return updatedMembers[index];
+    return updatedMember;
   };
 
-  // Top up a member's account
-  const topUpMember = (memberId: string, amount: number) => {
+  // Top up a member's balance
+  const topUpMember = (memberId: string | number, amount: number) => {
     const index = members.findIndex(m => m.id === memberId);
+    
     if (index === -1) {
       toast.error('Member not found');
-      return null;
+      return;
     }
-
+    
     const updatedMembers = [...members];
-    updatedMembers[index] = {
-      ...updatedMembers[index],
-      balance: updatedMembers[index].balance + amount
-    };
-
+    const member = { ...updatedMembers[index] };
+    member.balance += amount;
+    
+    updatedMembers[index] = member;
     setMembers(updatedMembers);
     saveMembersToStorage(updatedMembers);
-    toast.success(`Account topped up with ${formatCurrency(amount)}`);
-    return updatedMembers[index];
+    toast.success(`Balance updated: ₹${member.balance.toFixed(2)}`);
   };
 
   // Delete a member
-  const deleteMember = (memberId: string) => {
+  const deleteMember = (memberId: string | number) => {
     const updatedMembers = members.filter(m => m.id !== memberId);
     setMembers(updatedMembers);
     saveMembersToStorage(updatedMembers);

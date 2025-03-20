@@ -97,19 +97,6 @@ export default function Members() {
     deleteMember(memberId.toString());
   };
 
-  // Add missing handler functions
-  const handleEditMember = (member: Member) => {
-    // This would typically open an edit dialog
-    console.log('Editing member:', member);
-    // Placeholder for edit functionality
-  };
-
-  const handleViewMemberDetails = (member: Member) => {
-    // This would typically open a details view
-    console.log('Viewing member details:', member);
-    // Placeholder for view details functionality
-  };
-
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
